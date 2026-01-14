@@ -9,6 +9,7 @@ jobs:
   release:
     name: Upload release to NPM
     runs-on: ubuntu-latest
+    environment: "release"
     permissions:
       id-token: write
       contents: read
