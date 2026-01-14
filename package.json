@@ -35,5 +35,9 @@
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Universal-Commerce-Protocol/js-sdk"
   }
 }
