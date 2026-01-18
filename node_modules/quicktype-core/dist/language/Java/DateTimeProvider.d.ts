@@ -1,0 +1,70 @@
+import type { Sourcelike } from "../../Source";
+import type { JavaRenderer } from "./JavaRenderer";
+export declare abstract class JavaDateTimeProvider {
+    protected readonly _renderer: JavaRenderer;
+    protected readonly _className: string;
+    constructor(_renderer: JavaRenderer, _className: string);
+    abstract keywords: string[];
+    abstract dateTimeImports: string[];
+    abstract dateImports: string[];
+    abstract timeImports: string[];
+    abstract converterImports: string[];
+    abstract dateTimeType: string;
+    abstract dateType: string;
+    abstract timeType: string;
+    abstract dateTimeJacksonAnnotations: string[];
+    abstract dateJacksonAnnotations: string[];
+    abstract timeJacksonAnnotations: string[];
+    abstract emitDateTimeConverters(): void;
+    shouldEmitDateTimeConverter: boolean;
+    shouldEmitTimeConverter: boolean;
+    shouldEmitDateConverter: boolean;
+    abstract convertStringToDateTime(variable: Sourcelike): Sourcelike;
+    abstract convertStringToTime(variable: Sourcelike): Sourcelike;
+    abstract convertStringToDate(variable: Sourcelike): Sourcelike;
+    abstract convertDateTimeToString(variable: Sourcelike): Sourcelike;
+    abstract convertTimeToString(variable: Sourcelike): Sourcelike;
+    abstract convertDateToString(variable: Sourcelike): Sourcelike;
+}
+export declare class Java8DateTimeProvider extends JavaDateTimeProvider {
+    keywords: string[];
+    dateTimeImports: string[];
+    dateImports: string[];
+    timeImports: string[];
+    converterImports: string[];
+    dateTimeType: string;
+    dateType: string;
+    timeType: string;
+    dateTimeJacksonAnnotations: string[];
+    dateJacksonAnnotations: string[];
+    timeJacksonAnnotations: string[];
+    emitDateTimeConverters(): void;
+    convertStringToDateTime(variable: Sourcelike): Sourcelike;
+    convertStringToTime(variable: Sourcelike): Sourcelike;
+    convertStringToDate(variable: Sourcelike): Sourcelike;
+    convertDateTimeToString(variable: Sourcelike): Sourcelike;
+    convertTimeToString(variable: Sourcelike): Sourcelike;
+    convertDateToString(variable: Sourcelike): Sourcelike;
+}
+export declare class JavaLegacyDateTimeProvider extends JavaDateTimeProvider {
+    keywords: string[];
+    dateTimeImports: string[];
+    dateImports: string[];
+    timeImports: string[];
+    converterImports: string[];
+    dateTimeType: string;
+    dateType: string;
+    timeType: string;
+    dateTimeJacksonAnnotations: string[];
+    dateJacksonAnnotations: string[];
+    timeJacksonAnnotations: string[];
+    shouldEmitTimeConverter: boolean;
+    shouldEmitDateConverter: boolean;
+    emitDateTimeConverters(): void;
+    convertStringToDateTime(variable: Sourcelike): Sourcelike;
+    convertStringToTime(variable: Sourcelike): Sourcelike;
+    convertStringToDate(variable: Sourcelike): Sourcelike;
+    convertDateTimeToString(variable: Sourcelike): Sourcelike;
+    convertTimeToString(variable: Sourcelike): Sourcelike;
+    convertDateToString(variable: Sourcelike): Sourcelike;
+}

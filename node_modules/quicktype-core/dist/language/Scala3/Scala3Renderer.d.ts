@@ -1,0 +1,37 @@
+import { ConvenienceRenderer, type ForbiddenWordsInfo } from "../../ConvenienceRenderer";
+import { type Name, type Namer } from "../../Naming";
+import type { RenderContext } from "../../Renderer";
+import type { OptionValues } from "../../RendererOptions";
+import { type Sourcelike } from "../../Source";
+import type { TargetLanguage } from "../../TargetLanguage";
+import { ArrayType, type ClassType, type EnumType, MapType, type ObjectType, type Type, type UnionType } from "../../Type";
+import type { scala3Options } from "./language";
+export declare class Scala3Renderer extends ConvenienceRenderer {
+    protected readonly _scalaOptions: OptionValues<typeof scala3Options>;
+    constructor(targetLanguage: TargetLanguage, renderContext: RenderContext, _scalaOptions: OptionValues<typeof scala3Options>);
+    protected forbiddenNamesForGlobalNamespace(): readonly string[];
+    protected forbiddenForObjectProperties(_: ObjectType, _classNamed: Name): ForbiddenWordsInfo;
+    protected forbiddenForEnumCases(_: EnumType, _enumName: Name): ForbiddenWordsInfo;
+    protected forbiddenForUnionMembers(_u: UnionType, _unionName: Name): ForbiddenWordsInfo;
+    protected topLevelNameStyle(rawName: string): string;
+    protected makeNamedTypeNamer(): Namer;
+    protected namerForObjectProperty(): Namer;
+    protected makeUnionMemberNamer(): Namer;
+    protected makeEnumCaseNamer(): Namer;
+    protected emitDescriptionBlock(lines: Sourcelike[]): void;
+    protected emitBlock(line: Sourcelike, f: () => void, delimiter?: "curly" | "paren" | "lambda" | "none"): void;
+    protected anySourceType(optional: boolean): Sourcelike;
+    protected arrayType(arrayType: ArrayType, withIssues?: boolean): Sourcelike;
+    protected mapType(mapType: MapType, withIssues?: boolean): Sourcelike;
+    protected scalaType(t: Type, withIssues?: boolean, noOptional?: boolean): Sourcelike;
+    protected emitUsageHeader(): void;
+    protected emitHeader(): void;
+    protected emitTopLevelArray(t: ArrayType, name: Name): void;
+    protected emitTopLevelMap(t: MapType, name: Name): void;
+    protected emitEmptyClassDefinition(c: ClassType, className: Name): void;
+    protected emitClassDefinition(c: ClassType, className: Name): void;
+    protected emitClassDefinitionMethods(): void;
+    protected emitEnumDefinition(e: EnumType, enumName: Name): void;
+    protected emitUnionDefinition(u: UnionType, unionName: Name): void;
+    protected emitSourceStructure(): void;
+}

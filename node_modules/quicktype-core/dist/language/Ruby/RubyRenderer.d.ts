@@ -1,0 +1,34 @@
+import { ConvenienceRenderer, type ForbiddenWordsInfo } from "../../ConvenienceRenderer";
+import { type Name, Namer } from "../../Naming";
+import type { RenderContext } from "../../Renderer";
+import type { OptionValues } from "../../RendererOptions";
+import type { TargetLanguage } from "../../TargetLanguage";
+import { ClassType, type Type } from "../../Type";
+import type { rubyOptions } from "./language";
+export declare class RubyRenderer extends ConvenienceRenderer {
+    private readonly _options;
+    constructor(targetLanguage: TargetLanguage, renderContext: RenderContext, _options: OptionValues<typeof rubyOptions>);
+    protected get commentLineStart(): string;
+    protected get needsTypeDeclarationBeforeUse(): boolean;
+    protected canBeForwardDeclared(t: Type): boolean;
+    protected forbiddenNamesForGlobalNamespace(): readonly string[];
+    protected forbiddenForObjectProperties(_c: ClassType, _classNamed: Name): ForbiddenWordsInfo;
+    protected makeNamedTypeNamer(): Namer;
+    protected namerForObjectProperty(): Namer;
+    protected makeUnionMemberNamer(): Namer;
+    protected makeEnumCaseNamer(): Namer;
+    private dryType;
+    private exampleUse;
+    private jsonSample;
+    private fromDynamic;
+    private toDynamic;
+    private marshalsImplicitlyToDynamic;
+    private propertyTypeMarshalsImplicitlyFromDynamic;
+    private emitBlock;
+    private emitModule;
+    private emitClass;
+    private emitEnum;
+    private emitUnion;
+    private emitTypesModule;
+    protected emitSourceStructure(): void;
+}

@@ -1,0 +1,12 @@
+import type { TypeAttributes } from "../attributes/TypeAttributes";
+import type { BaseGraphRewriteBuilder } from "../GraphRewriting";
+import type { Type } from "./Type";
+import type { TypeGraph } from "./TypeGraph";
+export type TypeRef = number;
+export declare function isTypeRef(x: unknown): x is TypeRef;
+export declare function makeTypeRef(graph: TypeGraph, index: number): TypeRef;
+export declare function typeRefIndex(tref: TypeRef): number;
+export declare function assertTypeRefGraph(tref: TypeRef, graph: TypeGraph): void;
+export declare function derefTypeRef(tref: TypeRef, graphOrBuilder: TypeGraph | BaseGraphRewriteBuilder): Type;
+export declare function attributesForTypeRef(tref: TypeRef, graphOrBuilder: TypeGraph | BaseGraphRewriteBuilder): TypeAttributes;
+export declare function typeAndAttributesForTypeRef(tref: TypeRef, graphOrBuilder: TypeGraph | BaseGraphRewriteBuilder): [Type, TypeAttributes];

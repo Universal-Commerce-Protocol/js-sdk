@@ -1,0 +1,29 @@
+{
+    "name": "@glideapps/ts-necessities",
+    "version": "2.2.3",
+    "description": "Small utilities to make life with TypeScript easier",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "lint": "eslint src --ext .ts,.tsx",
+        "typedoc": "typedoc"
+    },
+    "keywords": [
+        "typescript"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/glideapps/ts-necessities.git"
+    },
+    "author": "Glide",
+    "license": "MIT",
+    "devDependencies": {
+        "@typescript-eslint/eslint-plugin": "^4.14.0",
+        "@typescript-eslint/parser": "^4.14.0",
+        "eslint": "^7.18.0",
+        "eslint-plugin-import": "^2.22.1",
+        "typedoc": "^0.25.13",
+        "typescript": "^5.4.4"
+    }
+}

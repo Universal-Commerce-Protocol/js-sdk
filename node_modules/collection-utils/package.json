@@ -1,0 +1,24 @@
+{
+    "name": "collection-utils",
+    "version": "1.0.1",
+    "description": "Utility functions for Javascript collections",
+    "repository": "https://github.com/quicktype/collection-utils",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "clean": "rm -rf dist node_modules *~",
+        "test": "echo \"Error: no test specified\" && exit 1",
+        "tslint": "tslint --project ."
+    },
+    "license": "Apache-2.0",
+    "devDependencies": {
+        "tslint": "^5.11.0",
+        "typescript": "^3.0.3"
+    },
+    "files": [
+        "package.json",
+        "README.md",
+        "dist/**"
+    ]
+}

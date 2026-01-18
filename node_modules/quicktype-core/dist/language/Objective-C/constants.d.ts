@@ -1,0 +1,3 @@
+export declare const keywords: readonly ["asm", "atomic", "auto", "bool", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "false", "float", "for", "goto", "if", "inline", "int", "long", "nil", "nonatomic", "register", "restrict", "retain", "return", "short", "signed", "sizeof", "static", "struct", "switch", "typedef", "typeof", "true", "union", "unsigned", "void", "volatile", "while"];
+export declare const forbiddenPropertyNames: readonly ["id", "hash", "description", "init", "copy", "mutableCopy", "superclass", "debugDescription", "new"];
+export declare const booleanPrefixes: readonly ["is", "are", "were", "was", "will", "all", "some", "many", "has", "have", "had", "does", "do", "requires", "require", "needs", "need"];

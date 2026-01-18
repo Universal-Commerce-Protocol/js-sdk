@@ -1,0 +1,38 @@
+import { ConvenienceRenderer, type ForbiddenWordsInfo } from "../../ConvenienceRenderer";
+import { type Name, Namer } from "../../Naming";
+import type { RenderContext } from "../../Renderer";
+import type { OptionValues } from "../../RendererOptions";
+import type { Sourcelike } from "../../Source";
+import type { TargetLanguage } from "../../TargetLanguage";
+import { ClassType, EnumType, type Type, UnionType } from "../../Type";
+import type { elixirOptions } from "./language";
+export declare class ElixirRenderer extends ConvenienceRenderer {
+    private readonly _options;
+    constructor(targetLanguage: TargetLanguage, renderContext: RenderContext, _options: OptionValues<typeof elixirOptions>);
+    protected get commentLineStart(): string;
+    protected get needsTypeDeclarationBeforeUse(): boolean;
+    protected canBeForwardDeclared(t: Type): boolean;
+    protected forbiddenNamesForGlobalNamespace(): string[];
+    protected forbiddenForObjectProperties(_c: ClassType, _classNamed: Name): ForbiddenWordsInfo;
+    protected makeNamedTypeNamer(): Namer;
+    protected namerForObjectProperty(): Namer;
+    protected makeUnionMemberNamer(): Namer;
+    protected makeEnumCaseNamer(): Namer;
+    private nameForNamedTypeWithNamespace;
+    private nameWithNamespace;
+    private elixirType;
+    private patternMatchClauseDecode;
+    private patternMatchClauseEncode;
+    private sortAndFilterPatternMatchTypes;
+    protected emitPatternMatches(types: Type[], name: Sourcelike, parentName: Sourcelike, suffix?: string, optional?: boolean): void;
+    private nameOfTransformFunction;
+    private fromDynamic;
+    private toDynamic;
+    protected emitBlock(source: Sourcelike, emit: () => void): void;
+    protected emitDescriptionBlock(lines: Sourcelike[]): void;
+    protected emitModule(c: ClassType, moduleName: Name): void;
+    private isValidAtom;
+    protected emitEnum(e: EnumType, enumName: Name): void;
+    protected emitUnion(_u: UnionType, _unionName: Name): void;
+    protected emitSourceStructure(): void;
+}

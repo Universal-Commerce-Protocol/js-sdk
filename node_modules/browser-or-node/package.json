@@ -1,0 +1,42 @@
+{
+  "name": "browser-or-node",
+  "version": "3.0.0",
+  "description": "Check in which environment the code is running - browser/node.js/webworker/jsdom/deno",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flexdinesh/browser-or-node.git"
+  },
+  "keywords": [
+    "npm",
+    "browser",
+    "node",
+    "is browser",
+    "is node",
+    "is browser node"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/flexdinesh/browser-or-node#readme",
+  "devDependencies": {
+    "prettier": "3.1.0",
+    "tsup": "^7.3.0",
+    "typescript": "^5.2.2"
+  }
+}

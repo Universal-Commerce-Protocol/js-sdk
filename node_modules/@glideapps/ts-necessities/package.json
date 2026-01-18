@@ -1,0 +1,52 @@
+{
+    "name": "@glideapps/ts-necessities",
+    "version": "2.4.0",
+    "description": "Small utilities to make life with TypeScript easier",
+    "main": "dist/index.js",
+    "module": "dist/index.mjs",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.mjs",
+            "require": "./dist/index.js",
+            "default": "./dist/index.js"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "npm run clean && tsc -d --emitDeclarationOnly --outDir dist && node build.js",
+        "lint": "eslint src --ext .ts,.tsx",
+        "typedoc": "typedoc",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:coverage": "vitest run --coverage",
+        "clean": "rm -rf dist",
+        "prepublishOnly": "npm run build"
+    },
+    "keywords": [
+        "typescript"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/glideapps/ts-necessities.git"
+    },
+    "author": "Glide",
+    "license": "MIT",
+    "devDependencies": {
+        "@eslint/js": "^9.23.0",
+        "@types/node": "^22.13.14",
+        "@typescript-eslint/eslint-plugin": "^8.28.0",
+        "@typescript-eslint/parser": "^8.28.0",
+        "@vitest/coverage-v8": "^3.1.1",
+        "esbuild": "^0.25.2",
+        "eslint": "^9.23.0",
+        "eslint-plugin-import": "^2.31.0",
+        "typedoc": "^0.28.1",
+        "typescript": "^5.8.2",
+        "typescript-eslint": "^8.28.0",
+        "vitest": "^3.1.1"
+    }
+}

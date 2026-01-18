@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+        "module": "commonjs",
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "noImplicitAny": true,
+        "noUnusedParameters": true,
+        "noUnusedLocals": true,
+        "strict": true,
+        "declaration": true,
+        "sourceMap": true,
+        "downlevelIteration": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitReturns": true,
+        "target": "es6",
+        "outDir": "dist",
+        "lib": ["es6", "dom"],
+        "baseUrl": "./src",
+        "typeRoots": ["./node_modules/@types"]
+    },
+    "typedocOptions": {
+        "entryPoints": ["src/index.ts"],
+        "out": "docs"
+    },
+    "include": ["./src/**/*.ts", "./src/**/*.tsx"]
+}
