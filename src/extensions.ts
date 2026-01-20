@@ -15,6 +15,7 @@ import {
   CheckoutWithFulfillmentUpdateRequestSchema,
   OrderSchema,
   PaymentCredentialSchema,
+  BuyerSchema,
 } from "./spec_generated";
 
 export const ExtendedPaymentCredentialSchema = PaymentCredentialSchema.extend({
@@ -23,6 +24,23 @@ export const ExtendedPaymentCredentialSchema = PaymentCredentialSchema.extend({
 export type ExtendedPaymentCredential = z.infer<
   typeof ExtendedPaymentCredentialSchema
 >;
+
+// [SECURITY] Safe version of PaymentCredential that masks sensitive fields
+export const SafePaymentCredentialSchema = PaymentCredentialSchema.transform((data) => ({
+  ...data,
+  number: data.number ? `****${data.number.slice(-4)}` : undefined,
+  cvc: data.cvc ? "***" : undefined,
+}));
+
+// [SECURITY] Safe version of Buyer that masks PII
+export const SafeBuyerSchema = BuyerSchema.transform((data) => ({
+  ...data,
+  email: data.email ? `${data.email.charAt(0)}***@${data.email.split("@")[1]}` : undefined,
+  phone_number: data.phone_number ? `******${data.phone_number.slice(-4)}` : undefined,
+  full_name: data.full_name ? "***" : undefined,
+  first_name: data.first_name ? "***" : undefined,
+  last_name: data.last_name ? "***" : undefined,
+}));
 
 export const PlatformConfigSchema = z.object({
   webhook_url: z.string().url().optional(),
