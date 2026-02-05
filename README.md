@@ -58,6 +58,7 @@ Then, run `npm run generate` pointing to the `spec` folder of the cloned
 repository, e.g.:
 
 ```bash
+npm install
 npm run generate -- ucp/source
 ```
 
