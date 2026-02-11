@@ -30,7 +30,7 @@ export const PlatformConfigSchema = z.object({
 export type PlatformConfig = z.infer<typeof PlatformConfigSchema>;
 
 export const ExtendedCheckoutResponseSchema = CheckoutResponseSchema.extend(
-  CheckoutWithFulfillmentResponseSchema.pick({ fulfillment: true }).shape
+  CheckoutWithFulfillmentResponseSchema.pick({ fulfillment: true }).shape,
 )
   .extend(CheckoutWithDiscountResponseSchema.pick({ discounts: true }).shape)
   .extend(CheckoutWithBuyerConsentResponseSchema.pick({ buyer: true }).shape)
@@ -45,13 +45,14 @@ export type ExtendedCheckoutResponse = z.infer<
 
 export const ExtendedCheckoutCreateRequestSchema =
   CheckoutCreateRequestSchema.extend(
-    CheckoutWithFulfillmentCreateRequestSchema.pick({ fulfillment: true }).shape
+    CheckoutWithFulfillmentCreateRequestSchema.pick({ fulfillment: true })
+      .shape,
   )
     .extend(
-      CheckoutWithDiscountCreateRequestSchema.pick({ discounts: true }).shape
+      CheckoutWithDiscountCreateRequestSchema.pick({ discounts: true }).shape,
     )
     .extend(
-      CheckoutWithBuyerConsentCreateRequestSchema.pick({ buyer: true }).shape
+      CheckoutWithBuyerConsentCreateRequestSchema.pick({ buyer: true }).shape,
     );
 export type ExtendedCheckoutCreateRequest = z.infer<
   typeof ExtendedCheckoutCreateRequestSchema
@@ -59,13 +60,14 @@ export type ExtendedCheckoutCreateRequest = z.infer<
 
 export const ExtendedCheckoutUpdateRequestSchema =
   CheckoutUpdateRequestSchema.extend(
-    CheckoutWithFulfillmentUpdateRequestSchema.pick({ fulfillment: true }).shape
+    CheckoutWithFulfillmentUpdateRequestSchema.pick({ fulfillment: true })
+      .shape,
   )
     .extend(
-      CheckoutWithDiscountUpdateRequestSchema.pick({ discounts: true }).shape
+      CheckoutWithDiscountUpdateRequestSchema.pick({ discounts: true }).shape,
     )
     .extend(
-      CheckoutWithBuyerConsentUpdateRequestSchema.pick({ buyer: true }).shape
+      CheckoutWithBuyerConsentUpdateRequestSchema.pick({ buyer: true }).shape,
     );
 export type ExtendedCheckoutUpdateRequest = z.infer<
   typeof ExtendedCheckoutUpdateRequestSchema
