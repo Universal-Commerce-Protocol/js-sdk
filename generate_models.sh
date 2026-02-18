@@ -15,15 +15,8 @@ quicktype \
   --src "$SPEC_DIR"/discovery/*.json \
   --src "$SPEC_DIR"/schemas/shopping/*.json \
   --src "$SPEC_DIR"/schemas/shopping/types/*.json \
-  --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/complete_request_with_ap2" \
-  --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/checkout_response_with_ap2" \
-  --src "$SPEC_DIR/schemas/shopping/buyer_consent.create_req.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/buyer_consent.update_req.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/buyer_consent_resp.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/discount.create_req.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/discount.update_req.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/discount_resp.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/fulfillment.create_req.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/fulfillment.update_req.json#/\$defs/checkout" \
-  --src "$SPEC_DIR/schemas/shopping/fulfillment_resp.json#/\$defs/checkout" \
+  --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/dev.ucp.shopping.checkout" \
+  --src "$SPEC_DIR/schemas/shopping/buyer_consent.json#/\$defs/dev.ucp.shopping.checkout" \
+  --src "$SPEC_DIR/schemas/shopping/discount.json#/\$defs/dev.ucp.shopping.checkout" \
+  --src "$SPEC_DIR/schemas/shopping/fulfillment.json#/\$defs/dev.ucp.shopping.checkout" \
   -o src/spec_generated.ts
