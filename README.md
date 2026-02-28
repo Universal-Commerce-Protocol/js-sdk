@@ -71,7 +71,7 @@ npm run build
 
 ## Contributing
 
-We welcome community contributions. See our [Contribution Guide](https://github.com/Universal-Commerce-Protocol/ucp/blob/main/CONTRIBUTING.md) for details.
+We welcome community contributions. See our [Contribution Guide](https://github.com/Universal-Commerce-Protocol/.github/blob/main/CONTRIBUTING.md) for details.
 
 ## License
 
