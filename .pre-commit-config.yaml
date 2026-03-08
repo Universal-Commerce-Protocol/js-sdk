@@ -39,4 +39,4 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args: ["--skip", "package-lock.json", "-L", "mor,tok,fpan,dpan"]
+        args: ["--skip", "package-lock.json", "-I", ".codespellignore"]
