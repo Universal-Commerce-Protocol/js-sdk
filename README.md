@@ -45,10 +45,12 @@ This project uses `npm` for package management and `typescript` for building.
 
 ### Generating Models
 
-The models are automatically generated from the JSON schemas in the [UCP
-Specification](https://ucp.dev).
+The models are automatically generated from the JSON schemas in the
+[UCP Specification](https://ucp.dev).
 
-To regenerate the models, you first need a local copy of the [UCP specification](https://github.com/Universal-Commerce-Protocol/ucp). If you don't have one, you can clone it via:
+To regenerate the models, you first need a local copy of the
+[UCP specification](https://github.com/Universal-Commerce-Protocol/ucp). If you
+don't have one, you can clone it via:
 
 ```bash
 git clone https://github.com/Universal-Commerce-Protocol/ucp.git
@@ -71,7 +73,9 @@ npm run build
 
 ## Contributing
 
-We welcome community contributions. See our [Contribution Guide](https://github.com/Universal-Commerce-Protocol/.github/blob/main/CONTRIBUTING.md) for details.
+We welcome community contributions. See our
+[Contribution Guide](https://github.com/Universal-Commerce-Protocol/.github/blob/main/CONTRIBUTING.md)
+for details.
 
 ## License
 
