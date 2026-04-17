@@ -1,0 +1,62 @@
+name: Auto-generate Models
+
+on:
+  repository_dispatch:
+    types: [spec-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g. v2026-03-06)"
+        required: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Token
+        uses: actions/create-github-app-token@v1
+        id: app-token
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: "ucp, js-sdk"
+
+      - name: Checkout SDK
+        uses: actions/checkout@v4
+
+      - name: Checkout Specification
+        uses: actions/checkout@v4
+        with:
+          repository: Universal-Commerce-Protocol/ucp
+          ref: ${{ github.event.client_payload.version || github.event.inputs.version }}
+          path: ucp-repo
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Models
+        run: npm run generate -- ucp-repo/source
+
+      - name: Update version in package.json
+        run: |
+          TAG_VERSION="${{ github.event.client_payload.version || github.event.inputs.version }}"
+          JS_VERSION=$(echo ${TAG_VERSION#v} | tr '-' '.')
+          npm version "$JS_VERSION" --no-git-tag-version
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          commit-message: "chore: update models to ${{ github.event.client_payload.version || github.event.inputs.version }}"
+          title: "Update models to ${{ github.event.client_payload.version || github.event.inputs.version }}"
+          body: "This PR updates the SDK models based on the latest specification release ${{ github.event.client_payload.version || github.event.inputs.version }}."
+          branch: "auto-update-models-${{ github.event.client_payload.version || github.event.inputs.version }}"
+          base: main
