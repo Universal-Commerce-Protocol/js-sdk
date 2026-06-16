@@ -30,4 +30,5 @@ jobs:
         python-version: '3.x'
     - uses: pre-commit/action@v3.0.1
       env:
+        #  workaround for pre-commit/action not being updated to node24
         FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
