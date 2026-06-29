@@ -16,6 +16,8 @@ const sourceSchemasRoot = path.join(sourceRoot, "schemas");
 
 const sourceShoppingRoot = path.join(sourceSchemasRoot, "shopping");
 const sourceTypesRoot = path.join(sourceShoppingRoot, "types");
+const sourceCommonRoot = path.join(sourceSchemasRoot, "common");
+const sourceCommonTypesRoot = path.join(sourceCommonRoot, "types");
 
 if (!fs.existsSync(sourceShoppingRoot)) {
   console.error(`Expected shopping schemas at ${sourceShoppingRoot}`);
@@ -29,9 +31,12 @@ const outputDiscoveryRoot = path.join(outputRoot, "discovery");
 const outputSchemasRoot = path.join(outputRoot, "schemas");
 const outputShoppingRoot = path.join(outputSchemasRoot, "shopping");
 const outputTypesRoot = path.join(outputShoppingRoot, "types");
+const outputCommonRoot = path.join(outputSchemasRoot, "common");
+const outputCommonTypesRoot = path.join(outputCommonRoot, "types");
 
 fs.mkdirSync(outputDiscoveryRoot, { recursive: true });
 fs.mkdirSync(outputTypesRoot, { recursive: true });
+fs.mkdirSync(outputCommonTypesRoot, { recursive: true });
 
 const CUSTOM_KEYS = new Set([
   "$comment",
@@ -71,25 +76,51 @@ const topLevelVariantMap = {
     update: "shopping/fulfillment.update_req.json",
     response: "shopping/fulfillment_resp.json",
   },
+  "shopping/cart.json": {
+    create: "shopping/cart.create_req.json",
+    update: "shopping/cart.update_req.json",
+    response: "shopping/cart_resp.json",
+  },
+  "shopping/catalog_lookup.json": {
+    response: "shopping/catalog_lookup.json",
+  },
+  "shopping/catalog_search.json": {
+    response: "shopping/catalog_search.json",
+  },
+  "shopping/split_payments.json": {
+    response: "shopping/split_payments.json",
+  },
 };
 
 const alwaysUnifiedTypeFiles = new Set([
   "account_info",
   "adjustment",
   "amount",
+  "attribution",
+  "availability",
   "available_payment_instrument",
   "binding",
   "buyer",
   "business_fulfillment_config",
+  "business_split_payments_config",
   "card_credential",
   "card_payment_instrument",
   "category",
   "context",
   "description",
+  "detail_option_value",
   "error_code",
   "error_response",
   "expectation",
+  "fulfillment_available_method",
+  "fulfillment_destination_filter",
   "fulfillment_event",
+  "fulfillment_group",
+  "fulfillment_option",
+  "fulfillment_option_base",
+  "input_correlation",
+  "instrument_group",
+  "line_item",
   "link",
   "media",
   "merchant_fulfillment_config",
@@ -115,8 +146,10 @@ const alwaysUnifiedTypeFiles = new Set([
   "reverse_domain_name",
   "search_filters",
   "selected_option",
+  "shipping_destination",
   "signals",
   "signed_amount",
+  "token_credential",
   "variant",
 ]);
 
@@ -410,6 +443,19 @@ function loadSchemaCache() {
     );
   }
 
+  if (fs.existsSync(sourceCommonTypesRoot)) {
+    for (const fileName of fs.readdirSync(sourceCommonTypesRoot)) {
+      if (!fileName.endsWith(".json")) {
+        continue;
+      }
+
+      cache.set(
+        `common/types/${fileName}`,
+        readJson(path.join(sourceCommonTypesRoot, fileName))
+      );
+    }
+  }
+
   return cache;
 }
 
@@ -622,6 +668,7 @@ function writeCompatibilityCoreSchemas() {
       response_checkout_schema: { $ref: "../discovery/ucp_response.json" },
       response_order_schema: { $ref: "../discovery/ucp_response.json" },
       response_cart_schema: { $ref: "../discovery/ucp_response.json" },
+      response_catalog_schema: { $ref: "../discovery/ucp_response.json" },
     },
   };
 
@@ -839,11 +886,28 @@ function writeCompatibilityAp2Schema(schemaCache) {
   writeJson(path.join(outputShoppingRoot, "ap2_mandate.json"), ap2Schema);
 }
 
+function writeProjectedCommonTypeSchemas(schemaCache) {
+  for (const [sourceRel, schema] of schemaCache.entries()) {
+    if (!sourceRel.startsWith("common/types/")) {
+      continue;
+    }
+    const baseName = path.posix.basename(sourceRel, ".json");
+    writeProjectedFile(
+      schema,
+      sourceRel,
+      `common/types/${baseName}.json`,
+      "response",
+      schemaCache
+    );
+  }
+}
+
 const schemaCache = loadSchemaCache();
 
 writeCompatibilityDiscoverySchemas();
 writeCompatibilityCoreSchemas();
 writeProjectedTypeSchemas(schemaCache);
+writeProjectedCommonTypeSchemas(schemaCache);
 writeProjectedTopLevelSchemas(schemaCache);
 writeCompatibilityPaymentDataSchema();
 writeCompatibilityAp2Schema(schemaCache);
