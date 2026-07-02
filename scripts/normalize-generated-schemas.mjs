@@ -53,7 +53,6 @@ const canonicalNames = new Map([
   ["MethodElement", "FulfillmentMethodCreateRequest"],
   ["OrderClass", "OrderConfirmation"],
   ["OrderLineItemQuantity", "LineItemQuantity"],
-  ["PaymentClass", "PaymentSelection"],
   ["PaymentCreateRequest", "PaymentSelection"],
   ["PaymentUpdateRequest", "PaymentSelection"],
   ["PurpleConsent", "Consent"],
@@ -113,11 +112,51 @@ for (let index = 0; index < sourceFile.statements.length; index += 1) {
   });
 }
 
+// Pass 1: Initial grouping to find duplicates
+const initialGroups = new Map();
+for (const block of schemaBlocks.values()) {
+  const group = initialGroups.get(block.normalizedInitializer) ?? [];
+  group.push(block.schemaName);
+  initialGroups.set(block.normalizedInitializer, group);
+}
+
+// Pass 2: Build alias map
+const aliasMap = new Map();
+for (const [alias, canonical] of canonicalNames) {
+  aliasMap.set(alias, canonical);
+}
+
+for (const names of initialGroups.values()) {
+  if (names.length === 1) {
+    continue;
+  }
+  const canonicalName =
+    names.map((name) => canonicalNames.get(name)).find(Boolean) ?? names[0];
+  for (const name of names) {
+    if (name !== canonicalName) {
+      aliasMap.set(name, canonicalName);
+    }
+  }
+}
+
+// Pass 3: Resolve aliases in initializers
+for (const block of schemaBlocks.values()) {
+  let resolvedInitializer = block.normalizedInitializer;
+  const sortedAliases = Array.from(aliasMap.keys()).sort((a, b) => b.length - a.length);
+  for (const alias of sortedAliases) {
+    const canonical = aliasMap.get(alias);
+    const regex = new RegExp(`\\b${alias}Schema\\b`, "g");
+    resolvedInitializer = resolvedInitializer.replace(regex, `${canonical}Schema`);
+  }
+  block.resolvedInitializer = resolvedInitializer;
+}
+
+// Pass 4: Regroup based on resolved initializers
 const duplicateGroups = new Map();
 for (const block of schemaBlocks.values()) {
-  const group = duplicateGroups.get(block.normalizedInitializer) ?? [];
+  const group = duplicateGroups.get(block.resolvedInitializer) ?? [];
   group.push(block.schemaName);
-  duplicateGroups.set(block.normalizedInitializer, group);
+  duplicateGroups.set(block.resolvedInitializer, group);
 }
 
 const replacements = [];
@@ -185,5 +224,10 @@ for (const replacement of replacements) {
     replacement.text +
     outputText.slice(replacement.end);
 }
+
+// Post-processing renames
+outputText = outputText
+  .replace(/\bPaymentClassSchema\b/g, "PaymentSplitPaymentsSchema")
+  .replace(/\bPaymentClass\b/g, "PaymentSplitPayments");
 
 fs.writeFileSync(destinationPath, outputText);
