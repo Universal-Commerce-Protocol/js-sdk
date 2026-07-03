@@ -29,12 +29,55 @@ This repository contains the JavaScript SDK for the
 types and [Zod](https://zod.dev/) schemas for UCP models, making it easy to
 build UCP-compliant applications in JavaScript and TypeScript.
 
+### UCP Version Compatibility
+
+Each version of the JavaScript SDK is generated against a specific version of the UCP schema:
+
+| SDK Version | UCP Schema Version |
+| ----------- | ------------------ |
+| **`0.4.x`** | **`2026-04-08`**   |
+| `0.1.1`     | `2026-01-23`       |
+| `0.1.0`     | `2026-01-11`       |
+
 ## Installation
 
 To install the SDK in your project, run:
 
 ```bash
 npm install @ucp-js/sdk
+```
+
+## Usage
+
+The SDK provides Zod schemas and TypeScript types for UCP models. You can use Zod to validate incoming data or ensure your outgoing data matches the specification.
+
+### TypeScript / ES Modules
+
+```typescript
+import { CheckoutResponseSchema, CheckoutResponse } from "@ucp-js/sdk";
+
+// Validate data against UCP schemas
+const parseResult = CheckoutResponseSchema.safeParse(checkoutData);
+
+if (parseResult.success) {
+  const checkout: CheckoutResponse = parseResult.data;
+  console.log(checkout.status); // "incomplete" | "ready_for_complete" | ...
+  console.log(checkout.currency); // ISO 4217 currency code
+} else {
+  console.error(parseResult.error);
+}
+```
+
+### CommonJS
+
+```javascript
+const { CheckoutResponseSchema } = require("@ucp-js/sdk");
+
+const parseResult = CheckoutResponseSchema.safeParse(checkoutData);
+if (parseResult.success) {
+  const checkout = parseResult.data;
+  // ...
+}
 ```
 
 ## Development
