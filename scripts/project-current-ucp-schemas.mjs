@@ -89,9 +89,6 @@ const topLevelVariantMap = {
   "shopping/catalog_search.json": {
     response: "shopping/catalog_search.json",
   },
-  "shopping/split_payments.json": {
-    response: "shopping/split_payments.json",
-  },
 };
 
 const alwaysUnifiedTypeFiles = new Set([
@@ -104,7 +101,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "binding",
   "buyer",
   "business_fulfillment_config",
-  "business_split_payments_config",
   "card_credential",
   "card_payment_instrument",
   "category",
@@ -121,7 +117,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "fulfillment_option",
   "fulfillment_option_base",
   "input_correlation",
-  "instrument_group",
   "link",
   "media",
   "merchant_fulfillment_config",

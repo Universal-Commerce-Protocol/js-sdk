@@ -84,10 +84,7 @@ QUICKTYPE_ARGS=(
   --src "$SPEC_DIR/schemas/shopping/catalog_lookup.json#/\$defs/get_product_response"
   --src "$SPEC_DIR/schemas/shopping/catalog_search.json#/\$defs/search_request"
   --src "$SPEC_DIR/schemas/shopping/catalog_search.json#/\$defs/search_response"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/instrument_group"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/payment_instrument"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/dev.ucp.shopping.checkout"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/dev.ucp.shopping.split_payments"
+
   -o "$TMP_OUTPUT"
 )
 

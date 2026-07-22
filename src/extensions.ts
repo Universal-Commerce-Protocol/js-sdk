@@ -16,7 +16,6 @@ import {
   CheckoutWithFulfillmentUpdateRequestSchema,
   OrderSchema,
   PaymentCredentialSchema,
-  PaymentSplitPaymentsSchema,
 } from "./spec_generated";
 
 export const ExtendedPaymentCredentialSchema = PaymentCredentialSchema.extend({
@@ -37,7 +36,6 @@ export const ExtendedCheckoutResponseSchema = CheckoutResponseSchema.extend(
   .extend(CheckoutWithDiscountResponseSchema.pick({ discounts: true }).shape)
   .extend(CheckoutWithBuyerConsentResponseSchema.pick({ buyer: true }).shape)
   .extend({
-    payment: PaymentSplitPaymentsSchema.optional(),
     platform: PlatformConfigSchema.optional(),
   });
 export type ExtendedCheckoutResponse = z.infer<
@@ -54,10 +52,7 @@ export const ExtendedCheckoutCreateRequestSchema =
     .extend(
       CheckoutWithBuyerConsentCreateRequestSchema.pick({ buyer: true }).shape
     )
-    .extend(CheckoutWithCartCreateRequestSchema.pick({ cart_id: true }).shape)
-    .extend({
-      payment: PaymentSplitPaymentsSchema.optional(),
-    });
+    .extend(CheckoutWithCartCreateRequestSchema.pick({ cart_id: true }).shape);
 export type ExtendedCheckoutCreateRequest = z.infer<
   typeof ExtendedCheckoutCreateRequestSchema
 >;
@@ -71,10 +66,7 @@ export const ExtendedCheckoutUpdateRequestSchema =
     )
     .extend(
       CheckoutWithBuyerConsentUpdateRequestSchema.pick({ buyer: true }).shape
-    )
-    .extend({
-      payment: PaymentSplitPaymentsSchema.optional(),
-    });
+    );
 export type ExtendedCheckoutUpdateRequest = z.infer<
   typeof ExtendedCheckoutUpdateRequestSchema
 >;
