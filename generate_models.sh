@@ -53,10 +53,12 @@ QUICKTYPE_ARGS=(
   --src "$SPEC_DIR"/discovery/*.json
   --src "$SPEC_DIR/schemas/shopping/checkout.create_req.json"
   --src "$SPEC_DIR/schemas/shopping/checkout.update_req.json"
+  --src "$SPEC_DIR/schemas/shopping/checkout.complete_req.json"
   --src "$SPEC_DIR/schemas/shopping/checkout_resp.json"
   --src "$SPEC_DIR/schemas/shopping/order.json"
   --src "$SPEC_DIR/schemas/shopping/payment.create_req.json"
   --src "$SPEC_DIR/schemas/shopping/payment.update_req.json"
+  --src "$SPEC_DIR/schemas/shopping/payment.complete_req.json"
   --src "$SPEC_DIR/schemas/shopping/payment_data.json"
   --src "$SPEC_DIR/schemas/shopping/payment_resp.json"
   --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/complete_request_with_ap2"
@@ -82,10 +84,7 @@ QUICKTYPE_ARGS=(
   --src "$SPEC_DIR/schemas/shopping/catalog_lookup.json#/\$defs/get_product_response"
   --src "$SPEC_DIR/schemas/shopping/catalog_search.json#/\$defs/search_request"
   --src "$SPEC_DIR/schemas/shopping/catalog_search.json#/\$defs/search_response"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/instrument_group"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/payment_instrument"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/dev.ucp.shopping.checkout"
-  --src "$SPEC_DIR/schemas/shopping/split_payments.json#/\$defs/dev.ucp.shopping.split_payments"
+
   -o "$TMP_OUTPUT"
 )
 

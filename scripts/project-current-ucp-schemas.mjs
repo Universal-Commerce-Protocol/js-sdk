@@ -51,11 +51,13 @@ const topLevelVariantMap = {
   "shopping/checkout.json": {
     create: "shopping/checkout.create_req.json",
     update: "shopping/checkout.update_req.json",
+    complete: "shopping/checkout.complete_req.json",
     response: "shopping/checkout_resp.json",
   },
   "shopping/payment.json": {
     create: "shopping/payment.create_req.json",
     update: "shopping/payment.update_req.json",
+    complete: "shopping/payment.complete_req.json",
     response: "shopping/payment_resp.json",
   },
   "shopping/order.json": {
@@ -87,9 +89,6 @@ const topLevelVariantMap = {
   "shopping/catalog_search.json": {
     response: "shopping/catalog_search.json",
   },
-  "shopping/split_payments.json": {
-    response: "shopping/split_payments.json",
-  },
 };
 
 const alwaysUnifiedTypeFiles = new Set([
@@ -102,7 +101,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "binding",
   "buyer",
   "business_fulfillment_config",
-  "business_split_payments_config",
   "card_credential",
   "card_payment_instrument",
   "category",
@@ -119,8 +117,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "fulfillment_option",
   "fulfillment_option_base",
   "input_correlation",
-  "instrument_group",
-  "line_item",
   "link",
   "media",
   "merchant_fulfillment_config",
@@ -380,6 +376,10 @@ function titleSuffixForOutput(outputRel) {
     return "Update Request";
   }
 
+  if (outputRel.endsWith(".complete_req.json")) {
+    return "Complete Request";
+  }
+
   if (outputRel.endsWith("_req.json")) {
     return "Request";
   }
@@ -596,8 +596,11 @@ function writeCompatibilityDiscoverySchemas() {
     required: ["capabilities", "version"],
     properties: {
       capabilities: {
-        type: "array",
-        items: { $ref: "capability_response.json" },
+        type: "object",
+        additionalProperties: {
+          type: "array",
+          items: { $ref: "capability_response.json" },
+        },
       },
       version: { type: "string" },
     },
