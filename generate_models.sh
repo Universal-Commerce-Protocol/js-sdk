@@ -53,10 +53,12 @@ QUICKTYPE_ARGS=(
   --src "$SPEC_DIR"/discovery/*.json
   --src "$SPEC_DIR/schemas/shopping/checkout.create_req.json"
   --src "$SPEC_DIR/schemas/shopping/checkout.update_req.json"
+  --src "$SPEC_DIR/schemas/shopping/checkout.complete_req.json"
   --src "$SPEC_DIR/schemas/shopping/checkout_resp.json"
   --src "$SPEC_DIR/schemas/shopping/order.json"
   --src "$SPEC_DIR/schemas/shopping/payment.create_req.json"
   --src "$SPEC_DIR/schemas/shopping/payment.update_req.json"
+  --src "$SPEC_DIR/schemas/shopping/payment.complete_req.json"
   --src "$SPEC_DIR/schemas/shopping/payment_data.json"
   --src "$SPEC_DIR/schemas/shopping/payment_resp.json"
   --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/complete_request_with_ap2"

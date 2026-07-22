@@ -38,8 +38,6 @@ export const ExtendedCheckoutResponseSchema = CheckoutResponseSchema.extend(
   .extend(CheckoutWithBuyerConsentResponseSchema.pick({ buyer: true }).shape)
   .extend({
     payment: PaymentSplitPaymentsSchema.optional(),
-    order_id: z.string().optional(),
-    order_permalink_url: z.string().optional(),
     platform: PlatformConfigSchema.optional(),
   });
 export type ExtendedCheckoutResponse = z.infer<
