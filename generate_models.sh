@@ -31,6 +31,11 @@ else
   exit 1
 fi
 
+# Schema tree (with intact $refs) used to recover the value constraints
+# quicktype's typescript-zod target drops. Captured before any projection so
+# cross-file $refs resolve as authored.
+CONSTRAINT_SCHEMA_DIR="$SPEC_DIR/schemas"
+
 TMP_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/ucp-spec-generated.XXXXXX.ts")"
 PROJECTED_SPEC_DIR=""
 cleanup() {
@@ -95,3 +100,7 @@ fi
 npx quicktype "${QUICKTYPE_ARGS[@]}"
 
 node scripts/normalize-generated-schemas.mjs "$TMP_OUTPUT" src/spec_generated.ts
+
+# Re-attach the value constraints (minimum, pattern, type: integer, ...) that
+# quicktype's typescript-zod target drops. See scripts/inject-schema-constraints.mjs.
+node scripts/inject-schema-constraints.mjs "$CONSTRAINT_SCHEMA_DIR" src/spec_generated.ts
