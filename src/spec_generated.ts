@@ -149,7 +149,15 @@ export const CheckoutCreateRequestContextSchema = z.object({
   address_country: z.string().optional(),
   address_region: z.string().optional(),
   currency: z.string().optional(),
-  eligibility: z.array(z.string()).optional(),
+  eligibility: z
+    .array(z.string())
+    .refine(
+      (items) =>
+        new Set(items.map((item) => JSON.stringify(item))).size ===
+        items.length,
+      { message: "Array items must be unique (uniqueItems)" }
+    )
+    .optional(),
   intent: z.string().optional(),
   language: z.string().optional(),
   postal_code: z.string().optional(),
@@ -666,7 +674,30 @@ export const CheckoutWithAp2MandateSchema = z.object({
   payment: PaymentResponseSchema.optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
   ap2: CheckoutWithAp2MandateAp2Schema.optional(),
 });
@@ -771,7 +802,30 @@ export const CartResponseSchema = z.object({
   links: z.array(LinkSchema).optional(),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
 });
 export type CartResponse = z.infer<typeof CartResponseSchema>;
@@ -805,7 +859,30 @@ export const CheckoutWithCartResponseSchema = z.object({
   payment: PaymentResponseSchema.optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
   cart_id: z.string().optional(),
 });
@@ -893,7 +970,30 @@ export const CheckoutResponseSchema = z.object({
   payment: PaymentResponseSchema.optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
 });
 export type CheckoutResponse = z.infer<typeof CheckoutResponseSchema>;
@@ -943,7 +1043,30 @@ export const CheckoutWithBuyerConsentResponseSchema = z.object({
   payment: PaymentResponseSchema.optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
 });
 export type CheckoutWithBuyerConsentResponse = z.infer<
@@ -1101,7 +1224,30 @@ export const OrderSchema = z.object({
   line_items: z.array(OrderLineItemSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   permalink_url: z.string(),
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
 });
 export type Order = z.infer<typeof OrderSchema>;
@@ -1121,7 +1267,30 @@ export const CheckoutWithDiscountResponseSchema = z.object({
   payment: PaymentResponseSchema.optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
   discounts: CheckoutWithDiscountResponseDiscountsSchema.optional(),
 });
@@ -1162,7 +1331,30 @@ export const CheckoutWithFulfillmentResponseSchema = z.object({
   payment: PaymentResponseSchema.optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
+  totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
+    for (const rule of [
+      { property: "type", value: "subtotal", min: 1, max: 1 },
+      { property: "type", value: "total", min: 1, max: 1 },
+    ]) {
+      const matches = items.filter(
+        (item) =>
+          item != null &&
+          (item as Record<string, unknown>)[rule.property] === rule.value
+      ).length;
+      if (rule.min !== undefined && matches < rule.min) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+        });
+      }
+      if (rule.max !== undefined && matches > rule.max) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+        });
+      }
+    }
+  }),
   ucp: UcpResponseSchema,
   fulfillment: FulfillmentResponseSchema.optional(),
 });
