@@ -9,7 +9,8 @@ export const ContentTypeSchema = z.enum(["markdown", "plain"]);
 export type ContentType = z.infer<typeof ContentTypeSchema>;
 
 // Reflects the resource state and recommended action. 'recoverable': platform can resolve
-// by modifying inputs and retrying via API. 'requires_buyer_input': merchant requires
+// the condition in band, for example by modifying inputs or processing a related Action,
+// and submit a new operation when needed. 'requires_buyer_input': merchant requires
 // information their API doesn't support collecting programmatically (checkout incomplete).
 // 'requires_buyer_review': buyer must authorize before order placement due to policy,
 // regulatory, or entitlement rules. 'unrecoverable': no valid resource exists to act on,
@@ -24,10 +25,10 @@ export const SeveritySchema = z.enum([
 ]);
 export type Severity = z.infer<typeof SeveritySchema>;
 
-export const MessageTypeSchema = z.enum(["error", "info", "warning"]);
-export type MessageType = z.infer<typeof MessageTypeSchema>;
+export const TypeSchema = z.enum(["error", "info", "warning"]);
+export type Type = z.infer<typeof TypeSchema>;
 
-// Checkout state indicating the current phase and required action. See Checkout Status
+// Checkout state indicating the current phase and required processing. See Checkout Status
 // lifecycle documentation for state transition details.
 
 export const CheckoutResponseStatusSchema = z.enum([
@@ -51,11 +52,6 @@ export const AdjustmentStatusSchema = z.enum([
 ]);
 export type AdjustmentStatus = z.infer<typeof AdjustmentStatusSchema>;
 
-// Delivery method type (shipping, pickup, digital).
-
-export const MethodTypeEnumSchema = z.enum(["digital", "pickup", "shipping"]);
-export type MethodTypeEnum = z.infer<typeof MethodTypeEnumSchema>;
-
 // Derived status: removed if quantity.total == 0, fulfilled if quantity.total > 0 and
 // quantity.fulfilled == quantity.total, partial if quantity.total > 0 and
 // quantity.fulfilled > 0, otherwise processing.
@@ -68,18 +64,22 @@ export const LineItemStatusSchema = z.enum([
 ]);
 export type LineItemStatus = z.infer<typeof LineItemStatusSchema>;
 
+// Identifies the party that asserted the current `granted` value for this segment.
+// `business` means the value reflects the business's default policy; `platform` means the
+// value reflects an explicit buyer decision captured by the platform.
+//
+// Identifies the party that asserted the current `granted` value. `business` means the
+// value reflects the business's default policy; `platform` means the value reflects an
+// explicit buyer decision captured by the platform.
+
+export const SourceSchema = z.enum(["business", "platform"]);
+export type Source = z.infer<typeof SourceSchema>;
+
 // Allocation method. 'each' = applied independently per item. 'across' = split
 // proportionally by value.
 
 export const MethodSchema = z.enum(["across", "each"]);
 export type Method = z.infer<typeof MethodSchema>;
-
-// Fulfillment method type.
-//
-// Fulfillment method type this availability applies to.
-
-export const MethodTypeSchema = z.enum(["pickup", "shipping"]);
-export type MethodType = z.infer<typeof MethodTypeSchema>;
 
 export const PaymentHandlerResponseSchema = z.object({
   config: z.record(z.string(), z.any()),
@@ -118,7 +118,9 @@ export const CapabilityDiscoverySchema = z.object({
 export type CapabilityDiscovery = z.infer<typeof CapabilityDiscoverySchema>;
 
 export const A2ASchema = z.object({
-  endpoint: z.string(),
+  endpoint: z
+    .string()
+    .regex(/^https:\/\/[^\/?#\s\\@]+(?:\/[^?#\s\\]*[^\/?#\s\\])?$/),
 });
 export type A2A = z.infer<typeof A2ASchema>;
 
@@ -145,20 +147,17 @@ export const BuyerSchema = z.object({
 });
 export type Buyer = z.infer<typeof BuyerSchema>;
 
-export const CheckoutCreateRequestContextSchema = z.object({
-  address_country: z.string().optional(),
-  address_region: z.string().optional(),
-  currency: z.string().optional(),
-  eligibility: z.array(z.string()).optional(),
-  intent: z.string().optional(),
-  language: z.string().optional(),
-  postal_code: z.string().optional(),
+export const PurplePaymentSchema = z.object({
+  handler: z
+    .string()
+    .regex(
+      /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+    ),
+  types: z.array(z.string()).optional(),
 });
-export type CheckoutCreateRequestContext = z.infer<
-  typeof CheckoutCreateRequestContextSchema
->;
-export const LookupRequestContextSchema = CheckoutCreateRequestContextSchema;
-export type LookupRequestContext = CheckoutCreateRequestContext;
+export type PurplePayment = z.infer<typeof PurplePaymentSchema>;
+export const FluffyPaymentSchema = PurplePaymentSchema;
+export type FluffyPayment = PurplePayment;
 
 export const ItemReferenceSchema = z.object({
   id: z.string(),
@@ -197,27 +196,35 @@ export type CheckoutCreateRequestSignals = z.infer<
 export const LookupRequestSignalsSchema = CheckoutCreateRequestSignalsSchema;
 export type LookupRequestSignals = CheckoutCreateRequestSignals;
 
+export const ActionsSchema = z.object({
+  config: z.record(z.string(), z.any()).optional(),
+  id: z.string().min(1),
+});
+export type Actions = z.infer<typeof ActionsSchema>;
+
 export const ItemResponseSchema = z.object({
   id: z.string(),
   image_url: z.string().optional(),
-  price: z.number(),
+  price: z.number().int().gte(0),
   title: z.string(),
 });
 export type ItemResponse = z.infer<typeof ItemResponseSchema>;
 
 export const TotalResponseSchema = z.object({
-  amount: z.number(),
+  amount: z.number().int(),
   display_text: z.string().optional(),
   type: z.string(),
 });
 export type TotalResponse = z.infer<typeof TotalResponseSchema>;
 
-export const LinkSchema = z.object({
+export const CheckoutResponseLinkSchema = z.object({
   title: z.string().optional(),
   type: z.string(),
   url: z.string(),
 });
-export type Link = z.infer<typeof LinkSchema>;
+export type CheckoutResponseLink = z.infer<typeof CheckoutResponseLinkSchema>;
+export const ConsentLinkSchema = CheckoutResponseLinkSchema;
+export type ConsentLink = CheckoutResponseLink;
 
 export const CheckoutResponseMessageSchema = z.object({
   code: z.string().optional(),
@@ -225,7 +232,7 @@ export const CheckoutResponseMessageSchema = z.object({
   content_type: ContentTypeSchema.optional(),
   path: z.string().optional(),
   severity: SeveritySchema.optional(),
-  type: MessageTypeSchema,
+  type: TypeSchema,
   image_url: z.string().optional(),
   presentation: z.string().optional(),
   url: z.string().optional(),
@@ -243,8 +250,15 @@ export const OrderConfirmationSchema = z.object({
 });
 export type OrderConfirmation = z.infer<typeof OrderConfirmationSchema>;
 
+export const DescriptionSchema = z.object({
+  html: z.string().optional(),
+  markdown: z.string().optional(),
+  plain: z.string().optional(),
+});
+export type Description = z.infer<typeof DescriptionSchema>;
+
 export const LineSchema = z.object({
-  amount: z.number(),
+  amount: z.number().int(),
   display_text: z.string(),
 });
 export type Line = z.infer<typeof LineSchema>;
@@ -272,9 +286,9 @@ export const ExpectationLineItemSchema = LineItemQuantityRefSchema;
 export type ExpectationLineItem = LineItemQuantityRef;
 
 export const QuantitySchema = z.object({
-  fulfilled: z.number(),
-  original: z.number().optional(),
-  total: z.number(),
+  fulfilled: z.number().int().gte(0),
+  original: z.number().int().gte(0).optional(),
+  total: z.number().int().gte(0),
 });
 export type Quantity = z.infer<typeof QuantitySchema>;
 
@@ -289,33 +303,46 @@ export const PaymentInstrumentSchema = z.object({
 export type PaymentInstrument = z.infer<typeof PaymentInstrumentSchema>;
 
 export const CompleteCheckoutRequestWithAp2Ap2Schema = z.object({
-  checkout_mandate: z.string(),
+  checkout_mandate: z
+    .string()
+    .regex(
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+(~[A-Za-z0-9_-]+)*$/
+    ),
 });
 export type CompleteCheckoutRequestWithAp2Ap2 = z.infer<
   typeof CompleteCheckoutRequestWithAp2Ap2Schema
 >;
 
 export const CheckoutWithAp2MandateAp2Schema = z.object({
-  merchant_authorization: z.string().optional(),
-  checkout_mandate: z.string(),
+  merchant_authorization: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+\.\.[A-Za-z0-9_-]+$/)
+    .optional(),
+  checkout_mandate: z
+    .string()
+    .regex(
+      /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]+(~[A-Za-z0-9_-]+)*$/
+    ),
 });
 export type CheckoutWithAp2MandateAp2 = z.infer<
   typeof CheckoutWithAp2MandateAp2Schema
 >;
 
-export const ConsentSchema = z.object({
-  analytics: z.boolean().optional(),
-  marketing: z.boolean().optional(),
-  preferences: z.boolean().optional(),
-  sale_of_data: z.boolean().optional(),
+export const SegmentValueSchema = z.object({
+  granted: z.boolean(),
+  source: SourceSchema,
 });
-export type Consent = z.infer<typeof ConsentSchema>;
-export const FluffyConsentSchema = ConsentSchema;
-export type FluffyConsent = Consent;
-export const PurpleConsentSchema = ConsentSchema;
-export type PurpleConsent = Consent;
-export const TentacledConsentSchema = ConsentSchema;
-export type TentacledConsent = Consent;
+export type SegmentValue = z.infer<typeof SegmentValueSchema>;
+export const SegmentClassSchema = SegmentValueSchema;
+export type SegmentClass = SegmentValue;
+
+export const ConsentSegmentSchema = z.object({
+  description: z.string(),
+  granted: z.boolean(),
+  links: z.array(ConsentLinkSchema).optional(),
+  source: SourceSchema,
+});
+export type ConsentSegment = z.infer<typeof ConsentSegmentSchema>;
 
 export const CheckoutWithDiscountCreateRequestDiscountsSchema = z.object({
   codes: z.array(z.string()).optional(),
@@ -329,7 +356,7 @@ export type CheckoutWithDiscountUpdateRequestDiscounts =
   CheckoutWithDiscountCreateRequestDiscounts;
 
 export const AllocationElementSchema = z.object({
-  amount: z.number(),
+  amount: z.number().int().gte(0),
   path: z.string(),
 });
 export type AllocationElement = z.infer<typeof AllocationElementSchema>;
@@ -353,12 +380,12 @@ export type FulfillmentDestinationRequest = z.infer<
 >;
 
 export const FulfillmentOptionSchema = z.object({
-  carrier: z.string().optional(),
-  description: z.string().optional(),
-  earliest_fulfillment_time: z.coerce.date().optional(),
+  description: DescriptionSchema.optional(),
   id: z.string(),
-  latest_fulfillment_time: z.coerce.date().optional(),
   title: z.string(),
+  carrier: z.string().optional(),
+  earliest_fulfillment_time: z.coerce.date().optional(),
+  latest_fulfillment_time: z.coerce.date().optional(),
   totals: z.array(TotalResponseSchema),
 });
 export type FulfillmentOption = z.infer<typeof FulfillmentOptionSchema>;
@@ -367,7 +394,7 @@ export const FulfillmentAvailableMethodSchema = z.object({
   description: z.string().optional(),
   fulfillable_on: z.union([z.null(), z.string()]).optional(),
   line_item_ids: z.array(z.string()),
-  type: MethodTypeSchema,
+  type: z.string(),
 });
 export type FulfillmentAvailableMethod = z.infer<
   typeof FulfillmentAvailableMethodSchema
@@ -397,31 +424,38 @@ export const PriceFilterSchema = z.object({
 });
 export type PriceFilter = z.infer<typeof PriceFilterSchema>;
 
+export const LookupResponsePolicySchema = z.object({
+  applies_to: z.array(z.string()).optional(),
+  description: DescriptionSchema,
+  type: z
+    .string()
+    .regex(
+      /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+    ),
+  url: z.string().optional(),
+});
+export type LookupResponsePolicy = z.infer<typeof LookupResponsePolicySchema>;
+export const CheckoutResponsePolicySchema = LookupResponsePolicySchema;
+export type CheckoutResponsePolicy = LookupResponsePolicy;
+
 export const CategorySchema = z.object({
   taxonomy: z.string().optional(),
   value: z.string(),
 });
 export type Category = z.infer<typeof CategorySchema>;
 
-export const DescriptionSchema = z.object({
-  html: z.string().optional(),
-  markdown: z.string().optional(),
-  plain: z.string().optional(),
-});
-export type Description = z.infer<typeof DescriptionSchema>;
-
 export const PriceSchema = z.object({
-  amount: z.number(),
-  currency: z.string(),
+  amount: z.number().int().gte(0),
+  currency: z.string().regex(/^[A-Z]{3}$/),
 });
 export type Price = z.infer<typeof PriceSchema>;
 
 export const MediaSchema = z.object({
   alt_text: z.string().optional(),
-  height: z.number().optional(),
+  height: z.number().int().gte(1).optional(),
   type: z.string(),
   url: z.string(),
-  width: z.number().optional(),
+  width: z.number().int().gte(1).optional(),
 });
 export type Media = z.infer<typeof MediaSchema>;
 
@@ -432,20 +466,18 @@ export const OptionValueSchema = z.object({
 export type OptionValue = z.infer<typeof OptionValueSchema>;
 
 export const RatingSchema = z.object({
-  count: z.number().optional(),
-  scale_max: z.number(),
-  scale_min: z.number().optional(),
-  value: z.number(),
+  count: z.number().int().gte(0).optional(),
+  scale_max: z.number().gte(1),
+  scale_min: z.number().gte(0).optional(),
+  value: z.number().gte(0),
 });
 export type Rating = z.infer<typeof RatingSchema>;
 
-export const PurpleAvailabilitySchema = z.object({
+export const AvailabilitySchema = z.object({
   available: z.boolean().optional(),
   status: z.string().optional(),
 });
-export type PurpleAvailability = z.infer<typeof PurpleAvailabilitySchema>;
-export const FluffyAvailabilitySchema = PurpleAvailabilitySchema;
-export type FluffyAvailability = PurpleAvailability;
+export type Availability = z.infer<typeof AvailabilitySchema>;
 
 export const PurpleBarcodeSchema = z.object({
   type: z.string(),
@@ -471,7 +503,7 @@ export const SelectedElementSchema = OptionElementSchema;
 export type SelectedElement = OptionElement;
 
 export const PurpleSellerSchema = z.object({
-  links: z.array(LinkSchema).optional(),
+  links: z.array(CheckoutResponseLinkSchema).optional(),
   name: z.string().optional(),
 });
 export type PurpleSeller = z.infer<typeof PurpleSellerSchema>;
@@ -480,7 +512,7 @@ export type FluffySeller = PurpleSeller;
 
 export const PurpleMeasureSchema = z.object({
   unit: z.string(),
-  value: z.number(),
+  value: z.number().int(),
 });
 export type PurpleMeasure = z.infer<typeof PurpleMeasureSchema>;
 export const FluffyMeasureSchema = PurpleMeasureSchema;
@@ -492,7 +524,7 @@ export type PurpleReference = PurpleMeasure;
 
 export const SearchRequestPaginationSchema = z.object({
   cursor: z.string().optional(),
-  limit: z.number().optional(),
+  limit: z.number().int().gte(1).optional(),
 });
 export type SearchRequestPagination = z.infer<
   typeof SearchRequestPaginationSchema
@@ -501,16 +533,18 @@ export type SearchRequestPagination = z.infer<
 export const SearchResponsePaginationSchema = z.object({
   cursor: z.string().optional(),
   has_next_page: z.boolean(),
-  total_count: z.number().optional(),
+  total_count: z.number().int().gte(0).optional(),
 });
 export type SearchResponsePagination = z.infer<
   typeof SearchResponsePaginationSchema
 >;
 
-export const PaymentSchema = z.object({
+export const UcpDiscoveryProfilePaymentSchema = z.object({
   handlers: z.array(PaymentHandlerResponseSchema).optional(),
 });
-export type Payment = z.infer<typeof PaymentSchema>;
+export type UcpDiscoveryProfilePayment = z.infer<
+  typeof UcpDiscoveryProfilePaymentSchema
+>;
 
 export const UcpServiceSchema = z.object({
   a2a: A2ASchema.optional(),
@@ -521,6 +555,22 @@ export const UcpServiceSchema = z.object({
   version: z.string(),
 });
 export type UcpService = z.infer<typeof UcpServiceSchema>;
+
+export const CheckoutCreateRequestContextSchema = z.object({
+  address_country: z.string().optional(),
+  address_region: z.string().optional(),
+  postal_code: z.string().optional(),
+  currency: z.string().optional(),
+  eligibility: z.array(z.string()).optional(),
+  intent: z.string().optional(),
+  language: z.string().optional(),
+  payment: z.array(PurplePaymentSchema).optional(),
+});
+export type CheckoutCreateRequestContext = z.infer<
+  typeof CheckoutCreateRequestContextSchema
+>;
+export const LookupRequestContextSchema = CheckoutCreateRequestContextSchema;
+export type LookupRequestContext = CheckoutCreateRequestContext;
 
 export const LineItemCreateRequestSchema = z.object({
   item: ItemCreateRequestSchema,
@@ -566,13 +616,13 @@ export const LineItemResponseSchema = z.object({
   id: z.string(),
   item: ItemResponseSchema,
   parent_id: z.string().optional(),
-  quantity: z.number(),
+  quantity: z.number().int().gte(1),
   totals: z.array(TotalResponseSchema),
 });
 export type LineItemResponse = z.infer<typeof LineItemResponseSchema>;
 
 export const TotalsResponseSchema = z.object({
-  amount: z.number(),
+  amount: z.number().int(),
   display_text: z.string().optional(),
   type: z.string(),
   lines: z.array(LineSchema).optional(),
@@ -614,7 +664,7 @@ export const ExpectationSchema = z.object({
   fulfillable_on: z.string().optional(),
   id: z.string(),
   line_items: z.array(ExpectationLineItemSchema),
-  method_type: MethodTypeEnumSchema,
+  method_type: z.string(),
 });
 export type Expectation = z.infer<typeof ExpectationSchema>;
 
@@ -641,6 +691,7 @@ export type CompleteCheckoutRequestWithAp2 = z.infer<
 >;
 
 export const CheckoutWithAp2MandateSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
@@ -649,10 +700,11 @@ export const CheckoutWithAp2MandateSchema = z.object({
   expires_at: z.coerce.date().optional(),
   id: z.string(),
   line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema),
+  links: z.array(CheckoutResponseLinkSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   order: OrderConfirmationSchema.optional(),
   payment: PaymentResponseSchema.optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
   totals: z.array(TotalsResponseSchema),
@@ -663,22 +715,23 @@ export type CheckoutWithAp2Mandate = z.infer<
   typeof CheckoutWithAp2MandateSchema
 >;
 
-export const BuyerWithConsentCreateRequestSchema = z.object({
-  email: z.string().optional(),
-  first_name: z.string().optional(),
-  last_name: z.string().optional(),
-  phone_number: z.string().optional(),
-  consent: PurpleConsentSchema.optional(),
+export const ConsentValueSchema = z.object({
+  granted: z.boolean(),
+  segments: z.record(z.string(), SegmentValueSchema).optional(),
+  source: SourceSchema,
 });
-export type BuyerWithConsentCreateRequest = z.infer<
-  typeof BuyerWithConsentCreateRequestSchema
->;
-export const BuyerWithConsentResponseSchema =
-  BuyerWithConsentCreateRequestSchema;
-export type BuyerWithConsentResponse = BuyerWithConsentCreateRequest;
-export const BuyerWithConsentUpdateRequestSchema =
-  BuyerWithConsentCreateRequestSchema;
-export type BuyerWithConsentUpdateRequest = BuyerWithConsentCreateRequest;
+export type ConsentValue = z.infer<typeof ConsentValueSchema>;
+export const ConsentClassSchema = ConsentValueSchema;
+export type ConsentClass = ConsentValue;
+
+export const BuyerConsentSchema = z.object({
+  description: z.string(),
+  granted: z.boolean(),
+  links: z.array(ConsentLinkSchema).optional(),
+  segments: z.record(z.string(), ConsentSegmentSchema).optional(),
+  source: SourceSchema,
+});
+export type BuyerConsent = z.infer<typeof BuyerConsentSchema>;
 
 export const CheckoutWithDiscountUpdateRequestSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
@@ -695,12 +748,17 @@ export type CheckoutWithDiscountUpdateRequest = z.infer<
 
 export const AppliedElementSchema = z.object({
   allocations: z.array(AllocationElementSchema).optional(),
-  amount: z.number(),
+  amount: z.number().int().gte(0),
   automatic: z.boolean().optional(),
   code: z.string().optional(),
-  eligibility: z.string().optional(),
+  eligibility: z
+    .string()
+    .regex(
+      /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+    )
+    .optional(),
   method: MethodSchema.optional(),
-  priority: z.number().optional(),
+  priority: z.number().int().gte(1).optional(),
   provisional: z.boolean().optional(),
   title: z.string(),
 });
@@ -720,7 +778,7 @@ export const FulfillmentMethodResponseSchema = z.object({
   id: z.string(),
   line_item_ids: z.array(z.string()),
   selected_destination_id: z.union([z.null(), z.string()]).optional(),
-  type: MethodTypeSchema,
+  type: z.string(),
 });
 export type FulfillmentMethodResponse = z.infer<
   typeof FulfillmentMethodResponseSchema
@@ -746,6 +804,7 @@ export const CartUpdateRequestSchema = z.object({
 export type CartUpdateRequest = z.infer<typeof CartUpdateRequestSchema>;
 
 export const CartResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
@@ -754,8 +813,9 @@ export const CartResponseSchema = z.object({
   expires_at: z.coerce.date().optional(),
   id: z.string(),
   line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema).optional(),
+  links: z.array(CheckoutResponseLinkSchema).optional(),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   totals: z.array(TotalsResponseSchema),
   ucp: UcpResponseSchema,
@@ -777,6 +837,7 @@ export const CheckoutUpdateRequestSchema = CheckoutWithCartUpdateRequestSchema;
 export type CheckoutUpdateRequest = CheckoutWithCartUpdateRequest;
 
 export const CheckoutWithCartResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
@@ -785,10 +846,11 @@ export const CheckoutWithCartResponseSchema = z.object({
   expires_at: z.coerce.date().optional(),
   id: z.string(),
   line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema),
+  links: z.array(CheckoutResponseLinkSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   order: OrderConfirmationSchema.optional(),
   payment: PaymentResponseSchema.optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
   totals: z.array(TotalsResponseSchema),
@@ -813,13 +875,13 @@ export type PriceRange = z.infer<typeof PriceRangeSchema>;
 
 export const ProductOptionSchema = z.object({
   name: z.string(),
-  values: z.array(OptionValueSchema),
+  values: z.array(OptionValueSchema).min(1),
 });
 export type ProductOption = z.infer<typeof ProductOptionSchema>;
 
 export const PurpleUnitPriceSchema = z.object({
-  amount: z.number(),
-  currency: z.string(),
+  amount: z.number().int().gte(0),
+  currency: z.string().regex(/^[A-Z]{3}$/),
   measure: PurpleMeasureSchema,
   reference: PurpleReferenceSchema,
 });
@@ -865,6 +927,7 @@ export type CheckoutCompleteRequest = z.infer<
 >;
 
 export const CheckoutResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
@@ -873,10 +936,11 @@ export const CheckoutResponseSchema = z.object({
   expires_at: z.coerce.date().optional(),
   id: z.string(),
   line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema),
+  links: z.array(CheckoutResponseLinkSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   order: OrderConfirmationSchema.optional(),
   payment: PaymentResponseSchema.optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
   totals: z.array(TotalsResponseSchema),
@@ -890,50 +954,37 @@ export const FulfillmentSchema = z.object({
 });
 export type Fulfillment = z.infer<typeof FulfillmentSchema>;
 
-export const CheckoutWithBuyerConsentCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerWithConsentCreateRequestSchema.optional(),
-  context: CheckoutCreateRequestContextSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  payment: PaymentCreateRequestSchema.optional(),
-  signals: CheckoutCreateRequestSignalsSchema.optional(),
+export const BuyerWithConsentCreateRequestSchema = z.object({
+  email: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  phone_number: z.string().optional(),
+  consent: z.record(z.string(), ConsentValueSchema).optional(),
 });
-export type CheckoutWithBuyerConsentCreateRequest = z.infer<
-  typeof CheckoutWithBuyerConsentCreateRequestSchema
+export type BuyerWithConsentCreateRequest = z.infer<
+  typeof BuyerWithConsentCreateRequestSchema
 >;
 
-export const CheckoutWithBuyerConsentUpdateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerWithConsentUpdateRequestSchema.optional(),
-  context: CheckoutCreateRequestContextSchema.optional(),
-  line_items: z.array(LineItemUpdateRequestSchema),
-  payment: PaymentUpdateRequestSchema.optional(),
-  signals: CheckoutCreateRequestSignalsSchema.optional(),
+export const BuyerWithConsentUpdateRequestSchema = z.object({
+  email: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  phone_number: z.string().optional(),
+  consent: z.record(z.string(), ConsentClassSchema).optional(),
 });
-export type CheckoutWithBuyerConsentUpdateRequest = z.infer<
-  typeof CheckoutWithBuyerConsentUpdateRequestSchema
+export type BuyerWithConsentUpdateRequest = z.infer<
+  typeof BuyerWithConsentUpdateRequestSchema
 >;
 
-export const CheckoutWithBuyerConsentResponseSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerWithConsentResponseSchema.optional(),
-  context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
-  currency: z.string(),
-  expires_at: z.coerce.date().optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema),
-  messages: z.array(CheckoutResponseMessageSchema).optional(),
-  order: OrderConfirmationSchema.optional(),
-  payment: PaymentResponseSchema.optional(),
-  signals: CheckoutCreateRequestSignalsSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(TotalsResponseSchema),
-  ucp: UcpResponseSchema,
+export const BuyerWithConsentResponseSchema = z.object({
+  email: z.string().optional(),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  phone_number: z.string().optional(),
+  consent: z.record(z.string(), BuyerConsentSchema).optional(),
 });
-export type CheckoutWithBuyerConsentResponse = z.infer<
-  typeof CheckoutWithBuyerConsentResponseSchema
+export type BuyerWithConsentResponse = z.infer<
+  typeof BuyerWithConsentResponseSchema
 >;
 
 export const CheckoutWithDiscountCreateRequestSchema = z.object({
@@ -962,7 +1013,7 @@ export const FulfillmentMethodCreateRequestSchema = z.object({
   groups: z.array(FulfillmentGroupSchema).optional(),
   line_item_ids: z.array(z.string()).optional(),
   selected_destination_id: z.union([z.null(), z.string()]).optional(),
-  type: MethodTypeSchema,
+  type: z.string(),
 });
 export type FulfillmentMethodCreateRequest = z.infer<
   typeof FulfillmentMethodCreateRequestSchema
@@ -997,7 +1048,7 @@ export const LookupRequestSchema = z.object({
 export type LookupRequest = z.infer<typeof LookupRequestSchema>;
 
 export const CatalogLookupSchema = z.object({
-  availability: PurpleAvailabilitySchema.optional(),
+  availability: AvailabilitySchema.optional(),
   barcodes: z.array(PurpleBarcodeSchema).optional(),
   categories: z.array(CategorySchema).optional(),
   description: DescriptionSchema,
@@ -1015,12 +1066,12 @@ export const CatalogLookupSchema = z.object({
   title: z.string(),
   unit_price: PurpleUnitPriceSchema.optional(),
   url: z.string().optional(),
-  inputs: z.array(InputCorrelationSchema),
+  inputs: z.array(InputCorrelationSchema).min(1),
 });
 export type CatalogLookup = z.infer<typeof CatalogLookupSchema>;
 
 export const VariantSchema = z.object({
-  availability: FluffyAvailabilitySchema.optional(),
+  availability: AvailabilitySchema.optional(),
   barcodes: z.array(FluffyBarcodeSchema).optional(),
   categories: z.array(CategorySchema).optional(),
   description: DescriptionSchema,
@@ -1055,12 +1106,12 @@ export const SearchResponseProductSchema = z.object({
   tags: z.array(z.string()).optional(),
   title: z.string(),
   url: z.string().optional(),
-  variants: z.array(VariantSchema),
+  variants: z.array(VariantSchema).min(1),
 });
 export type SearchResponseProduct = z.infer<typeof SearchResponseProductSchema>;
 
 export const UcpDiscoveryProfileSchema = z.object({
-  payment: PaymentSchema.optional(),
+  payment: UcpDiscoveryProfilePaymentSchema.optional(),
   signing_keys: z.array(SigningKeySchema).optional(),
   ucp: UcpSchema,
 });
@@ -1087,12 +1138,62 @@ export const OrderSchema = z.object({
   line_items: z.array(OrderLineItemSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   permalink_url: z.string(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   totals: z.array(TotalsResponseSchema),
   ucp: UcpResponseSchema,
 });
 export type Order = z.infer<typeof OrderSchema>;
 
+export const CheckoutWithBuyerConsentCreateRequestSchema = z.object({
+  attribution: z.record(z.string(), z.string()).optional(),
+  buyer: BuyerWithConsentCreateRequestSchema.optional(),
+  context: CheckoutCreateRequestContextSchema.optional(),
+  line_items: z.array(LineItemCreateRequestSchema),
+  payment: PaymentCreateRequestSchema.optional(),
+  signals: CheckoutCreateRequestSignalsSchema.optional(),
+});
+export type CheckoutWithBuyerConsentCreateRequest = z.infer<
+  typeof CheckoutWithBuyerConsentCreateRequestSchema
+>;
+
+export const CheckoutWithBuyerConsentUpdateRequestSchema = z.object({
+  attribution: z.record(z.string(), z.string()).optional(),
+  buyer: BuyerWithConsentUpdateRequestSchema.optional(),
+  context: CheckoutCreateRequestContextSchema.optional(),
+  line_items: z.array(LineItemUpdateRequestSchema),
+  payment: PaymentUpdateRequestSchema.optional(),
+  signals: CheckoutCreateRequestSignalsSchema.optional(),
+});
+export type CheckoutWithBuyerConsentUpdateRequest = z.infer<
+  typeof CheckoutWithBuyerConsentUpdateRequestSchema
+>;
+
+export const CheckoutWithBuyerConsentResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
+  attribution: z.record(z.string(), z.string()).optional(),
+  buyer: BuyerWithConsentResponseSchema.optional(),
+  context: CheckoutCreateRequestContextSchema.optional(),
+  continue_url: z.string().optional(),
+  currency: z.string(),
+  expires_at: z.coerce.date().optional(),
+  id: z.string(),
+  line_items: z.array(LineItemResponseSchema),
+  links: z.array(CheckoutResponseLinkSchema),
+  messages: z.array(CheckoutResponseMessageSchema).optional(),
+  order: OrderConfirmationSchema.optional(),
+  payment: PaymentResponseSchema.optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
+  signals: CheckoutCreateRequestSignalsSchema.optional(),
+  status: CheckoutResponseStatusSchema,
+  totals: z.array(TotalsResponseSchema),
+  ucp: UcpResponseSchema,
+});
+export type CheckoutWithBuyerConsentResponse = z.infer<
+  typeof CheckoutWithBuyerConsentResponseSchema
+>;
+
 export const CheckoutWithDiscountResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
@@ -1101,10 +1202,11 @@ export const CheckoutWithDiscountResponseSchema = z.object({
   expires_at: z.coerce.date().optional(),
   id: z.string(),
   line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema),
+  links: z.array(CheckoutResponseLinkSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   order: OrderConfirmationSchema.optional(),
   payment: PaymentResponseSchema.optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
   totals: z.array(TotalsResponseSchema),
@@ -1134,6 +1236,7 @@ export type CheckoutWithFulfillmentUpdateRequest = z.infer<
 >;
 
 export const CheckoutWithFulfillmentResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
@@ -1142,10 +1245,11 @@ export const CheckoutWithFulfillmentResponseSchema = z.object({
   expires_at: z.coerce.date().optional(),
   id: z.string(),
   line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkSchema),
+  links: z.array(CheckoutResponseLinkSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
   order: OrderConfirmationSchema.optional(),
   payment: PaymentResponseSchema.optional(),
+  policies: z.array(CheckoutResponsePolicySchema).optional(),
   signals: CheckoutCreateRequestSignalsSchema.optional(),
   status: CheckoutResponseStatusSchema,
   totals: z.array(TotalsResponseSchema),
@@ -1170,7 +1274,7 @@ export const LookupResponseProductSchema = z.object({
   tags: z.array(z.string()).optional(),
   title: z.string(),
   url: z.string().optional(),
-  variants: z.array(CatalogLookupSchema),
+  variants: z.array(CatalogLookupSchema).min(1),
 });
 export type LookupResponseProduct = z.infer<typeof LookupResponseProductSchema>;
 
@@ -1194,8 +1298,10 @@ export const ProductSchema = z.object({
 export type Product = z.infer<typeof ProductSchema>;
 
 export const SearchResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   messages: z.array(LookupResponseMessageSchema).optional(),
   pagination: SearchResponsePaginationSchema.optional(),
+  policies: z.array(LookupResponsePolicySchema).optional(),
   products: z.array(SearchResponseProductSchema),
   ucp: UcpResponseSchema,
 });
@@ -1215,14 +1321,18 @@ export type CheckoutWithFulfillmentCreateRequest = z.infer<
 >;
 
 export const LookupResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   messages: z.array(LookupResponseMessageSchema).optional(),
+  policies: z.array(LookupResponsePolicySchema).optional(),
   products: z.array(LookupResponseProductSchema),
   ucp: UcpResponseSchema,
 });
 export type LookupResponse = z.infer<typeof LookupResponseSchema>;
 
 export const GetProductResponseSchema = z.object({
+  actions: z.record(z.string(), z.array(ActionsSchema)).optional(),
   messages: z.array(LookupResponseMessageSchema).optional(),
+  policies: z.array(LookupResponsePolicySchema).optional(),
   product: ProductSchema,
   ucp: UcpResponseSchema,
 });

@@ -1,6 +1,6 @@
 {
   "name": "@ucp-js/sdk",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "UCP SDK for JavaScript",
   "license": "Apache-2.0",
   "main": "./dist/cjs/index.js",
@@ -23,6 +23,8 @@
     "build:types": "tsc -p tsconfig.types.json",
     "build:noEmit": "tsc --noEmit",
     "generate": "./generate_models.sh",
+    "pretest": "tsc src/spec_generated.ts --outDir tests/.dist --module commonjs --moduleResolution node --target ES2020 --strict --esModuleInterop --skipLibCheck",
+    "test": "node --test \"tests/**/*.test.js\"",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

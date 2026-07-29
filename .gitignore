@@ -1,5 +1,6 @@
 node_modules/
 dist/
+tests/.dist/
 .DS_Store
 *.log
 temp_projected/
