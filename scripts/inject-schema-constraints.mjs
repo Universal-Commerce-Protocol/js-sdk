@@ -18,11 +18,23 @@
  *
  * quicktype emits object shape + `z.enum` only. It drops every JSON Schema
  * value constraint (`minimum`, `maximum`, `pattern`, `minLength`, `minItems`,
- * `type: integer`, ...), so the generated schemas accept spec-invalid data
- * (e.g. `PriceSchema.parse({ amount: -50 })` succeeds, though `amount` is
+ * `type: integer`, `uniqueItems`, `contains`/`minContains`/`maxContains`, ...),
+ * so the generated schemas accept spec-invalid data (e.g.
+ * `PriceSchema.parse({ amount: -50 })` succeeds, though `amount` is
  * `{ type: integer, minimum: 0 }`). See js-sdk#33. The python-sdk enforces the
  * same constraints (datamodel-code-generator emits most natively); this script
  * is the JS-side analogue of python-sdk's `postprocess_models.py`.
+ *
+ * Scalar/length/items constraints render as chained zod methods (`.int()`,
+ * `.gte()`, `.regex()`, `.min()`, ...). Array set/cardinality constraints that
+ * zod has no native method for render as an appended `.refine()` /
+ * `.superRefine()`: `uniqueItems` -> a uniqueness refine; `contains` +
+ * `minContains`/`maxContains` -> a cardinality superRefine (e.g. a checkout
+ * `totals` array MUST contain exactly one `subtotal` and one `total`). These
+ * stay object-scoped like the scalar constraints, so a checkout `totals`
+ * (references `types/totals.json`, which carries the `contains` rules) is
+ * constrained while a fulfillment-option/line-item `totals` (an inline
+ * `total.json` array with no `contains`) is left untouched.
  *
  * Approach (object-scoped, zero-false-positive by construction):
  *   1. Scan the UCP JSON Schemas, resolving `$ref`/`allOf`, and index every
@@ -95,7 +107,10 @@ function resolveRef(ref, baseFile) {
   return { node, file: targetFile };
 }
 
-// Constraint keywords we can express in zod today.
+// Constraint keywords we can express in zod today. `contains` /
+// `minContains` / `maxContains` are array cardinality rules recovered
+// separately (see collectContainsGroups) because they may appear more than
+// once per array (via `allOf`), which a flat keyword merge cannot represent.
 const CONSTRAINT_KEYS = [
   "type",
   "minimum",
@@ -107,6 +122,7 @@ const CONSTRAINT_KEYS = [
   "pattern",
   "minItems",
   "maxItems",
+  "uniqueItems",
 ];
 
 /** Effective value constraints for a schema node, following $ref + allOf. */
@@ -183,6 +199,65 @@ function resolveObject(node, file, seen = new Set(), depth = 0) {
   return Object.keys(properties).length ? { properties, file } : null;
 }
 
+/**
+ * A single `contains` cardinality clause: the array MUST hold between `min`
+ * and `max` items whose `property` equals `value`. We only recover the
+ * common, unambiguous shape `{ contains: { properties: { <p>: { const: <v> }
+ * }, required: [<p>] } }`; anything richer is skipped (and reported) rather
+ * than guessed at.
+ */
+function describeContainsClause(clause) {
+  const contains = clause && clause.contains;
+  if (!contains || typeof contains !== "object" || !contains.properties) {
+    return null;
+  }
+  const entries = Object.entries(contains.properties).filter(
+    ([, sub]) => sub && typeof sub === "object" && "const" in sub
+  );
+  if (entries.length !== 1) {
+    return null;
+  }
+  const [property, sub] = entries[0];
+  const clauseObj = { property, value: sub.const };
+  // JSON Schema: `contains` without `minContains` implies at least one match.
+  clauseObj.min = clause.minContains !== undefined ? clause.minContains : 1;
+  if (clause.maxContains !== undefined) {
+    clauseObj.max = clause.maxContains;
+  }
+  return clauseObj;
+}
+
+/**
+ * Recover every `contains` cardinality clause on an array schema, following
+ * `$ref` and collecting from both the node itself and each `allOf` branch
+ * (totals declares one clause per required entry type). Returns [] when none.
+ */
+function collectContainsGroups(node, file, seen = new Set(), depth = 0) {
+  if (!node || typeof node !== "object" || depth > 32) {
+    return [];
+  }
+  if (typeof node.$ref === "string") {
+    const key = `${file}|${node.$ref}`;
+    if (seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    const resolved = resolveRef(node.$ref, file);
+    return collectContainsGroups(resolved.node, resolved.file, seen, depth + 1);
+  }
+  const groups = [];
+  const direct = describeContainsClause(node);
+  if (direct) {
+    groups.push(direct);
+  }
+  if (Array.isArray(node.allOf)) {
+    for (const sub of node.allOf) {
+      groups.push(...collectContainsGroups(sub, file, new Set(seen), depth + 1));
+    }
+  }
+  return groups;
+}
+
 /** Normalize a node's constraints into a canonical descriptor + signature. */
 function describeConstraint(propertyNode, file) {
   const eff = effectiveConstraints(propertyNode, file);
@@ -202,6 +277,9 @@ function describeConstraint(propertyNode, file) {
   if (eff.pattern !== undefined) descriptor.pattern = eff.pattern;
   if (eff.minItems !== undefined) descriptor.minItems = eff.minItems;
   if (eff.maxItems !== undefined) descriptor.maxItems = eff.maxItems;
+  if (eff.uniqueItems === true) descriptor.uniqueItems = true;
+  const containsGroups = collectContainsGroups(propertyNode, file);
+  if (containsGroups.length) descriptor.containsGroups = containsGroups;
   const signature = JSON.stringify(descriptor);
   return Object.keys(descriptor).length ? { descriptor, signature } : null;
 }
@@ -331,6 +409,43 @@ function toRegexLiteral(pattern) {
   return `/${out}/`;
 }
 
+/** `.refine(...)` enforcing JSON Schema `uniqueItems: true`. */
+function renderUniqueItemsRefine() {
+  return (
+    `.refine((items) => new Set(items.map((item) => JSON.stringify(item)))` +
+    `.size === items.length, ` +
+    `{ message: "Array items must be unique (uniqueItems)" })`
+  );
+}
+
+/** `.superRefine(...)` enforcing `contains` + `minContains`/`maxContains`. */
+function renderContainsRefine(groups) {
+  const rules = JSON.stringify(
+    groups.map((group) => {
+      const rule = { property: group.property, value: group.value };
+      if (group.min !== undefined) rule.min = group.min;
+      if (group.max !== undefined) rule.max = group.max;
+      return rule;
+    })
+  );
+  return (
+    `.superRefine((items, ctx) => {` +
+    `for (const rule of ${rules}) {` +
+    `const matches = items.filter((item) => item != null && ` +
+    `(item as Record<string, unknown>)[rule.property] === rule.value).length;` +
+    `if (rule.min !== undefined && matches < rule.min) {` +
+    `ctx.addIssue({ code: z.ZodIssueCode.custom, message: ` +
+    "`Array must contain at least ${rule.min} item(s) where " +
+    "${rule.property} = ${JSON.stringify(rule.value)} (minContains)` });" +
+    `}` +
+    `if (rule.max !== undefined && matches > rule.max) {` +
+    `ctx.addIssue({ code: z.ZodIssueCode.custom, message: ` +
+    "`Array must contain at most ${rule.max} item(s) where " +
+    "${rule.property} = ${JSON.stringify(rule.value)} (maxContains)` });" +
+    `}}})`
+  );
+}
+
 /**
  * Zod methods for a descriptor given the generated field's base kind.
  * Returns null when the base kind is incompatible with the constraint
@@ -349,7 +464,10 @@ function methodsFor(descriptor, baseKind) {
     descriptor.maxLength !== undefined ||
     descriptor.pattern !== undefined;
   const isArray =
-    descriptor.minItems !== undefined || descriptor.maxItems !== undefined;
+    descriptor.minItems !== undefined ||
+    descriptor.maxItems !== undefined ||
+    descriptor.uniqueItems !== undefined ||
+    descriptor.containsGroups !== undefined;
 
   if (isNumeric) {
     if (baseKind !== "number") return null;
@@ -383,6 +501,9 @@ function methodsFor(descriptor, baseKind) {
       methods.push(`.min(${descriptor.minItems})`);
     if (descriptor.maxItems !== undefined)
       methods.push(`.max(${descriptor.maxItems})`);
+    if (descriptor.uniqueItems) methods.push(renderUniqueItemsRefine());
+    if (descriptor.containsGroups)
+      methods.push(renderContainsRefine(descriptor.containsGroups));
   }
   return methods.length ? methods : null;
 }
@@ -448,6 +569,8 @@ function alreadyConstrained(baseCall) {
       "max",
       "length",
       "regex",
+      "refine",
+      "superRefine",
     ]);
     if (CONSTRAINT_METHODS.has(method)) {
       return true;
