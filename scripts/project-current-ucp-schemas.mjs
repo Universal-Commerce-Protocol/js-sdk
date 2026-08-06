@@ -490,7 +490,223 @@ function writeProjectedFile(
   writeJson(path.join(outputSchemasRoot, outputRel), projected);
 }
 
+// --- Source-derived response envelope -------------------------------------
+// The UCP response envelope (ucp.json#/$defs/base, specialized per response by
+// #/$defs/response_*_schema) and its registry item shapes are DERIVED from the
+// pinned source schemas rather than hand-written, so a base/entity property can
+// never silently vanish from the generated envelope and each registry maps to
+// its real per-entity RESPONSE shape. See buildResponseEnvelopeSchema().
+
+// Root ($id-level) schemas that define the envelope and its entities. Loaded
+// lazily so the projection still runs for the legacy layout (which supplies its
+// own type files) without them.
+function loadRootSchema(name) {
+  const file = path.join(sourceSchemasRoot, name);
+  return fs.existsSync(file) ? readJson(file) : undefined;
+}
+
+// Registry-valued base properties (object keyed by reverse-domain name whose
+// values are arrays of an entity) map to the projected compat schema for that
+// entity's RESPONSE shape. Keyed by the entity file the base $refs.
+const RESPONSE_ITEM_COMPAT_BY_ENTITY = {
+  "capability.json": "capability_response.json",
+  "payment_handler.json": "payment_handler_resp.json",
+  "service.json": "service_resp.json",
+};
+
+// Resolve a "#/..." or "<file>#/..." JSON-Pointer $ref against the loaded root
+// schemas. Returns { node, doc } so nested local $refs resolve in their own doc.
+function resolveRootRef(ref, currentDoc, rootDocs) {
+  const [file, fragment = ""] = ref.split("#");
+  const doc = file === "" ? currentDoc : rootDocs[file];
+  if (!doc) {
+    throw new Error(`Cannot resolve $ref "${ref}" while deriving the response envelope`);
+  }
+  let node = doc;
+  for (const segment of fragment.split("/").filter(Boolean)) {
+    node = node?.[segment];
+  }
+  if (node === undefined) {
+    throw new Error(`$ref "${ref}" did not resolve to a node`);
+  }
+  return { node, doc };
+}
+
+// Flatten an allOf/$ref chain into a single { required:Set, properties } view.
+// Only allOf composition is followed (the shape used by entity/base/*_schema);
+// anyOf transport variants are intentionally not merged (their per-transport
+// config typing is out of scope -- noted as a residual).
+function flattenAllOf(node, currentDoc, rootDocs, acc) {
+  if (!node || typeof node !== "object") {
+    return acc;
+  }
+  if (typeof node.$ref === "string") {
+    const { node: target, doc } = resolveRootRef(node.$ref, currentDoc, rootDocs);
+    return flattenAllOf(target, doc, rootDocs, acc);
+  }
+  if (Array.isArray(node.allOf)) {
+    for (const part of node.allOf) {
+      flattenAllOf(part, currentDoc, rootDocs, acc);
+    }
+  }
+  if (Array.isArray(node.required)) {
+    for (const name of node.required) {
+      acc.required.add(name);
+    }
+  }
+  if (node.properties && typeof node.properties === "object") {
+    for (const [name, schema] of Object.entries(node.properties)) {
+      // Later allOf parts (and overlays) win, matching JSON Schema merge order.
+      acc.properties[name] = schema;
+    }
+  }
+  return acc;
+}
+
+// Normalize a source property schema to the compat leaf quicktype consumes,
+// dropping annotations (format/pattern/description/default) that the pipeline's
+// constraint injector re-attaches, and keeping only shape-bearing keywords.
+function toCompatLeaf(schema) {
+  if (!schema || typeof schema !== "object") {
+    return { type: "string" };
+  }
+  // A $ref leaf here is a scalar alias (e.g. version -> #/$defs/version): a
+  // string in the pinned schemas.
+  if (typeof schema.$ref === "string") {
+    return { type: "string" };
+  }
+  // A oneOf/anyOf leaf (e.g. capability `extends`: string | string[]) becomes a
+  // z.union. Disjoint scalar/array branches are emitted as a JSON Schema
+  // type-union ({ type: ["array","string"], items }) rather than an anyOf node:
+  // both compile to the same z.union, but an anyOf node perturbs quicktype's
+  // naming of UNRELATED anonymous types (it renamed catalog product schemas),
+  // whereas the type-union does not.
+  const union = schema.oneOf ?? schema.anyOf;
+  if (Array.isArray(union)) {
+    const branches = union.map((branch) => toCompatLeaf(branch));
+    const branchTypes = branches
+      .map((branch) => branch.type)
+      .filter((type) => typeof type === "string");
+    const disjointScalars =
+      branchTypes.length === branches.length &&
+      new Set(branchTypes).size === branchTypes.length;
+    if (disjointScalars) {
+      const leaf = { type: branchTypes.slice().sort() };
+      const arrayBranch = branches.find((branch) => branch.type === "array");
+      if (arrayBranch && arrayBranch.items) {
+        leaf.items = arrayBranch.items;
+      }
+      return leaf;
+    }
+    return { anyOf: branches };
+  }
+  if (schema.type === "object") {
+    return { type: "object", additionalProperties: true };
+  }
+  if (schema.type === "array") {
+    const items =
+      schema.items && typeof schema.items.$ref === "string"
+        ? rewriteItemRefForDiscovery(schema.items)
+        : toCompatLeaf(schema.items);
+    const leaf = { type: "array", items };
+    if (typeof schema.minItems === "number") {
+      leaf.minItems = schema.minItems;
+    }
+    return leaf;
+  }
+  if (schema.type === "string") {
+    const leaf = { type: "string" };
+    if (Array.isArray(schema.enum)) {
+      leaf.enum = [...schema.enum];
+    }
+    return leaf;
+  }
+  if (schema.type === "boolean" || schema.type === "integer" || schema.type === "number") {
+    return { type: schema.type };
+  }
+  return { type: "string" };
+}
+
+// Rewrite an array item $ref from its source (schemas-root-relative) path to the
+// path a discovery/ compat file uses to reach the projected type tree.
+function rewriteItemRefForDiscovery(items) {
+  if (items && typeof items.$ref === "string") {
+    const [file, fragment = ""] = items.$ref.split("#");
+    const rel = `../schemas/${file}`;
+    return fragment ? { $ref: `${rel}#${fragment}` } : { $ref: rel };
+  }
+  return items ?? { type: "object", additionalProperties: true };
+}
+
+// Derive a flat compat schema for an entity's #/$defs/response_schema.
+function buildEntityResponseSchema(title, entitySchema, rootDocs) {
+  const acc = flattenAllOf(
+    entitySchema.$defs.response_schema,
+    entitySchema,
+    rootDocs,
+    { required: new Set(), properties: {} }
+  );
+  const properties = {};
+  for (const [name, schema] of Object.entries(acc.properties)) {
+    properties[name] = toCompatLeaf(schema);
+  }
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    title,
+    type: "object",
+    required: [...acc.required].sort(),
+    properties,
+  };
+}
+
+// Derive the shared response envelope from ucp.json#/$defs/base: every base
+// property is modeled with base's OWN required-ness, registry properties map to
+// their per-entity RESPONSE compat shape, and scalars/enums (version, status)
+// are carried through. An unknown registry entity fails loudly rather than
+// silently dropping the field.
+function buildResponseEnvelopeSchema(ucpSchema) {
+  const base = ucpSchema.$defs.base;
+  const properties = {};
+  for (const [name, schema] of Object.entries(base.properties)) {
+    const items = schema?.additionalProperties?.items;
+    if (items && typeof items.$ref === "string") {
+      const entityFile = items.$ref.split("#")[0];
+      const compat = RESPONSE_ITEM_COMPAT_BY_ENTITY[entityFile];
+      if (!compat) {
+        throw new Error(
+          `Response envelope registry "${name}" refs unknown entity "${entityFile}"; ` +
+            `add it to RESPONSE_ITEM_COMPAT_BY_ENTITY so it is not dropped.`
+        );
+      }
+      properties[name] = {
+        type: "object",
+        additionalProperties: { type: "array", items: { $ref: compat } },
+      };
+    } else {
+      properties[name] = toCompatLeaf(schema);
+    }
+  }
+  return {
+    $schema: "https://json-schema.org/draft/2020-12/schema",
+    title: "UCP Response",
+    type: "object",
+    required: [...(base.required ?? [])],
+    properties,
+  };
+}
+
 function writeCompatibilityDiscoverySchemas() {
+  const ucpSchema = loadRootSchema("ucp.json");
+  const paymentHandlerSchema = loadRootSchema("payment_handler.json");
+  const serviceSchema = loadRootSchema("service.json");
+  const capabilitySchema = loadRootSchema("capability.json");
+  const rootDocs = {
+    "ucp.json": ucpSchema,
+    "payment_handler.json": paymentHandlerSchema,
+    "service.json": serviceSchema,
+    "capability.json": capabilitySchema,
+  };
+
   const signingKey = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "Signing Key",
@@ -509,32 +725,25 @@ function writeCompatibilityDiscoverySchemas() {
     },
   };
 
-  const paymentHandlerResponse = {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Payment Handler Response",
-    type: "object",
-    required: [
-      "config",
-      "config_schema",
-      "id",
-      "instrument_schemas",
-      "name",
-      "spec",
-      "version",
-    ],
-    properties: {
-      config: { type: "object", additionalProperties: true },
-      config_schema: { type: "string" },
-      id: { type: "string" },
-      instrument_schemas: {
-        type: "array",
-        items: { type: "string" },
-      },
-      name: { type: "string" },
-      spec: { type: "string" },
-      version: { type: "string" },
-    },
-  };
+  // Derived from payment_handler.json#/$defs/response_schema (allOf: entity +
+  // {required:[id]} + available_instruments). Required {id, version}; carries
+  // available_instruments -- matching real handler responses. Replaces the
+  // legacy discovery shape (config_schema/instrument_schemas/name) that no
+  // longer exists in the 2026-04-08 schema.
+  const paymentHandlerResponse = buildEntityResponseSchema(
+    "Payment Handler Response",
+    paymentHandlerSchema,
+    rootDocs
+  );
+
+  // Derived from service.json#/$defs/response_schema. Required {transport,
+  // version}; carries endpoint. (Per-transport embedded config typing from the
+  // anyOf overlay is out of scope; config stays a generic object.)
+  const serviceResponse = buildEntityResponseSchema(
+    "Service Response",
+    serviceSchema,
+    rootDocs
+  );
 
   const capabilityDiscovery = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -551,20 +760,16 @@ function writeCompatibilityDiscoverySchemas() {
     },
   };
 
-  const capabilityResponse = {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "Capability Response",
-    type: "object",
-    required: ["name", "version"],
-    properties: {
-      config: { type: "object", additionalProperties: true },
-      extends: { type: "string" },
-      name: { type: "string" },
-      schema: { type: "string" },
-      spec: { type: "string" },
-      version: { type: "string" },
-    },
-  };
+  // Derived from capability.json#/$defs/response_schema (allOf: entity +
+  // {extends: string | string[]}). Required only {version}; NO `name` (the
+  // legacy hand-written shape required a non-existent `name`, false-rejecting
+  // every conformant capabilities registry -- e.g. the golden checkout ucp
+  // envelope). `extends` is a string|string[] union.
+  const capabilityResponse = buildEntityResponseSchema(
+    "Capability Response",
+    capabilitySchema,
+    rootDocs
+  );
 
   const ucpService = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -603,22 +808,16 @@ function writeCompatibilityDiscoverySchemas() {
     },
   };
 
-  const ucpResponse = {
-    $schema: "https://json-schema.org/draft/2020-12/schema",
-    title: "UCP Response",
-    type: "object",
-    required: ["capabilities", "version"],
-    properties: {
-      capabilities: {
-        type: "object",
-        additionalProperties: {
-          type: "array",
-          items: { $ref: "capability_response.json" },
-        },
-      },
-      version: { type: "string" },
-    },
-  };
+  // The shared response envelope, DERIVED from ucp.json#/$defs/base. Models
+  // every base property (capabilities, payment_handlers, services, status,
+  // version) with base's own required-ness (only version), so payment_handlers
+  // and services are no longer silently stripped and capabilities is no longer
+  // wrongly required. This single type is aliased by all four response
+  // envelopes (checkout/order/cart/catalog); payment_handlers is therefore
+  // OPTIONAL here even though response_checkout_schema requires it -- enforcing
+  // the checkout-only requirement needs a distinct type and is filed as a
+  // follow-up so order/cart/catalog responses are not falsely rejected.
+  const ucpResponse = buildResponseEnvelopeSchema(ucpSchema);
 
   const ucpDiscoveryProfile = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -661,6 +860,10 @@ function writeCompatibilityDiscoverySchemas() {
   writeJson(
     path.join(outputDiscoveryRoot, "payment_handler_resp.json"),
     paymentHandlerResponse
+  );
+  writeJson(
+    path.join(outputDiscoveryRoot, "service_resp.json"),
+    serviceResponse
   );
   writeJson(
     path.join(outputDiscoveryRoot, "capability.json"),
