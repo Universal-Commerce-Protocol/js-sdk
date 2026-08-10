@@ -200,6 +200,34 @@ function resolveObject(node, file, seen = new Set(), depth = 0) {
 }
 
 /**
+ * Resolve a `propertyNames` subschema to its literal regex `pattern`, following
+ * a `$ref` (e.g. `signals.json` inlines the pattern; `ucp.json` maps `$ref`
+ * `reverse_domain_name.json`). Returns the pattern string exactly as authored in
+ * the source schema (never a hand-copied literal), or null when the constraint
+ * is not a plain string pattern we can express as a zod key check.
+ */
+function resolvePropertyNamesPattern(node, file, seen = new Set(), depth = 0) {
+  if (!node || typeof node !== "object" || depth > 32) {
+    return null;
+  }
+  if (typeof node.$ref === "string") {
+    const key = `${file}|${node.$ref}`;
+    if (seen.has(key)) {
+      return null;
+    }
+    seen.add(key);
+    const resolved = resolveRef(node.$ref, file);
+    return resolvePropertyNamesPattern(
+      resolved.node,
+      resolved.file,
+      seen,
+      depth + 1
+    );
+  }
+  return typeof node.pattern === "string" ? node.pattern : null;
+}
+
+/**
  * A single `contains` cardinality clause: the array MUST hold between `min`
  * and `max` items whose `property` equals `value`. We only recover the
  * common, unambiguous shape `{ contains: { properties: { <p>: { const: <v> }
@@ -289,6 +317,16 @@ function describeConstraint(propertyNode, file) {
 // setKey -> Map(propertyName -> Map(signature -> descriptor))
 const constraintIndex = new Map();
 
+// Object-level `propertyNames` (a key-name constraint, not a per-field one) for
+// objects that declare it alongside named `properties` -- the extra-allow +
+// named-field shape (`signals.json`: reverse-domain key pattern + named
+// dev.ucp.* fields + `additionalProperties: true`) that quicktype renders as a
+// plain `z.object`, dropping both the key pattern and the extra-key retention.
+// Pure dict-map `propertyNames` (no named `properties`, e.g. ucp.json's
+// registries) render as `z.record` and are intentionally not handled here; they
+// need a distinct record-key mechanism. setKey -> Map(signature -> descriptor).
+const propertyNamesIndex = new Map();
+
 function recordObject(properties, file) {
   const setKey = Object.keys(properties).sort().join(",");
   if (!constraintIndex.has(setKey)) {
@@ -305,6 +343,45 @@ function recordObject(properties, file) {
     }
     byProperty.get(name).set(described.signature, described.descriptor);
   }
+}
+
+/**
+ * Record an object-level `propertyNames` key constraint, keyed like the scalar
+ * index by the object's sorted named-property set. Only the extra-allow +
+ * named-field shape is recorded: named `properties` are present (so the
+ * generated schema is a `z.object`, not a `z.record`), `additionalProperties` is
+ * `true` (extras allowed, so they must be retained AND key-checked), and the
+ * key constraint resolves to a literal pattern. `propertyNames` on an `allOf`
+ * branch is followed like the scalar merge (first branch wins).
+ */
+function recordPropertyNames(node, properties, file) {
+  let propertyNames = node.propertyNames;
+  let additionalProperties = node.additionalProperties;
+  if (propertyNames === undefined && Array.isArray(node.allOf)) {
+    for (const sub of node.allOf) {
+      if (sub && typeof sub === "object" && sub.propertyNames !== undefined) {
+        propertyNames = sub.propertyNames;
+        if (additionalProperties === undefined) {
+          additionalProperties = sub.additionalProperties;
+        }
+        break;
+      }
+    }
+  }
+  if (propertyNames === undefined || additionalProperties !== true) {
+    return;
+  }
+  const pattern = resolvePropertyNamesPattern(propertyNames, file);
+  if (pattern === null) {
+    return;
+  }
+  const setKey = Object.keys(properties).sort().join(",");
+  const descriptor = { pattern };
+  const signature = JSON.stringify(descriptor);
+  if (!propertyNamesIndex.has(setKey)) {
+    propertyNamesIndex.set(setKey, new Map());
+  }
+  propertyNamesIndex.get(setKey).set(signature, descriptor);
 }
 
 function walkSchema(node, file, seen = new Set(), depth = 0) {
@@ -324,6 +401,7 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
   const resolvedObject = resolveObject(node, file);
   if (resolvedObject) {
     recordObject(resolvedObject.properties, resolvedObject.file);
+    recordPropertyNames(node, resolvedObject.properties, file);
   }
   if (node.properties && typeof node.properties === "object") {
     for (const child of Object.values(node.properties)) {
@@ -388,6 +466,19 @@ for (const [setKey, byProperty] of constraintIndex) {
   }
 }
 
+// Resolve the object-level propertyNames index to one descriptor per set,
+// dropping any set that carried conflicting patterns (mirrors the scalar
+// ambiguity guard so a coincidental property-set clash never over-restricts).
+// setKey -> descriptor
+const resolvedPropertyNames = new Map();
+for (const [setKey, bySignature] of propertyNamesIndex) {
+  if (bySignature.size === 1) {
+    resolvedPropertyNames.set(setKey, [...bySignature.values()][0]);
+  } else {
+    ambiguous.push({ setKey, name: "<propertyNames>", count: bySignature.size });
+  }
+}
+
 // --- Zod method rendering --------------------------------------------------
 
 function toRegexLiteral(pattern) {
@@ -442,6 +533,40 @@ function renderContainsRefine(groups) {
     `ctx.addIssue({ code: z.ZodIssueCode.custom, message: ` +
     "`Array must contain at most ${rule.max} item(s) where " +
     "${rule.property} = ${JSON.stringify(rule.value)} (maxContains)` });" +
+    `}}})`
+  );
+}
+
+/**
+ * Object-level `propertyNames` enforcement for an extra-allow object.
+ *
+ * `.catchall(z.any())` retains extra keys (a bare `z.object` strips them, which
+ * would silently drop the `additionalProperties: true` reverse-domain extras the
+ * schema means to keep), and the `.superRefine` matches every property name --
+ * named fields and retained extras alike -- against the source key pattern.
+ *
+ * `RegExp.test` is used deliberately: it implements JSON Schema's unanchored
+ * `pattern` semantics, and for the source's `^...$`-anchored pattern it matches
+ * only end-of-input in ECMA-262 (no `m` flag), so a trailing-newline key is
+ * rejected -- the JS analogue of python-sdk#66's `re.fullmatch` fix (Python's
+ * `re.match` admits `"...\n"`). See scripts test for the pinned newline case.
+ *
+ * Out of scope for this per-object key check: zod-core strips an own `__proto__`
+ * key from every `z.object` (a prototype-pollution safeguard) before `.catchall`
+ * / `.superRefine` run, so such a key is silently dropped (safe direction: not
+ * preserved, no pollution) rather than surfaced as a rejection. That is an
+ * SDK-wide zod trait, not a per-schema property, and it is pinned by a test.
+ */
+function renderPropertyNamesRefine(pattern) {
+  const regex = toRegexLiteral(pattern);
+  return (
+    `.catchall(z.any())` +
+    `.superRefine((value, ctx) => {` +
+    `for (const key of Object.keys(value)) {` +
+    `if (!${regex}.test(key)) {` +
+    `ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: ` +
+    "`Property name ${JSON.stringify(key)} does not match the required " +
+    "pattern (propertyNames)` });" +
     `}}})`
   );
 }
@@ -579,6 +704,22 @@ function alreadyConstrained(baseCall) {
   return false;
 }
 
+/**
+ * Idempotency for the object-level propertyNames splice: is the whole
+ * `z.object({...})` call already wrapped by a key-check method chain
+ * (`.catchall(...)` / `.superRefine(...)`)?
+ */
+function objectAlreadyConstrained(objectCall) {
+  const parent = objectCall.parent;
+  if (parent && ts.isPropertyAccessExpression(parent)) {
+    const method = parent.name.text;
+    if (method === "catchall" || method === "superRefine") {
+      return true;
+    }
+  }
+  return false;
+}
+
 // --- Parse the generated file and compute edits ----------------------------
 
 const sourceText = fs.readFileSync(targetPath, "utf8");
@@ -594,6 +735,7 @@ const edits = []; // { pos, text }
 const report = {
   objectsMatched: 0,
   fieldsInjected: 0,
+  propertyNamesInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -620,12 +762,13 @@ function handleObjectLiteral(objectLiteral) {
   }
   const setKey = [...names].sort().join(",");
   const resolvedProperties = resolvedIndex.get(setKey);
-  if (!resolvedProperties) {
+  const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
+  if (!resolvedProperties && !propertyNamesDescriptor) {
     return;
   }
   let matchedAny = false;
   for (const prop of objectLiteral.properties) {
-    if (!ts.isPropertyAssignment(prop)) {
+    if (!resolvedProperties || !ts.isPropertyAssignment(prop)) {
       continue;
     }
     const name =
@@ -658,6 +801,25 @@ function handleObjectLiteral(objectLiteral) {
     report.fieldsInjected += 1;
     report.injections.push(`${setKey} :: ${name} ${methods.join("")}`);
     matchedAny = true;
+  }
+  // Object-level propertyNames: splice a key-pattern check onto the whole
+  // `z.object({...})` call (the property-set here is the constrained object).
+  if (propertyNamesDescriptor) {
+    const objectCall = objectLiteral.parent;
+    if (
+      objectCall &&
+      ts.isCallExpression(objectCall) &&
+      !objectAlreadyConstrained(objectCall)
+    ) {
+      const text = renderPropertyNamesRefine(propertyNamesDescriptor.pattern);
+      edits.push({ pos: objectCall.getEnd(), text });
+      report.propertyNamesInjected += 1;
+      report.injections.push(`${setKey} :: <propertyNames> ${text}`);
+      matchedAny = true;
+    } else if (objectCall && objectAlreadyConstrained(objectCall)) {
+      report.fieldsAlreadyDone += 1;
+      matchedAny = true;
+    }
   }
   if (matchedAny) {
     report.objectsMatched += 1;
@@ -695,6 +857,7 @@ fs.writeFileSync(targetPath, output);
 process.stdout.write(
   `inject-schema-constraints: ${report.fieldsInjected} field(s) constrained ` +
     `across ${report.objectsMatched} object schema(s); ` +
+    `${report.propertyNamesInjected} propertyNames key-check(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );

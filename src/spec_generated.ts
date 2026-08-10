@@ -196,10 +196,23 @@ export const PaymentCredentialSchema = z.object({
 });
 export type PaymentCredential = z.infer<typeof PaymentCredentialSchema>;
 
-export const CheckoutCreateRequestSignalsSchema = z.object({
-  "dev.ucp.buyer_ip": z.string().optional(),
-  "dev.ucp.user_agent": z.string().optional(),
-});
+export const CheckoutCreateRequestSignalsSchema = z
+  .object({
+    "dev.ucp.buyer_ip": z.string().optional(),
+    "dev.ucp.user_agent": z.string().optional(),
+  })
+  .catchall(z.any())
+  .superRefine((value, ctx) => {
+    for (const key of Object.keys(value)) {
+      if (!/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: `Property name ${JSON.stringify(key)} does not match the required pattern (propertyNames)`,
+        });
+      }
+    }
+  });
 export type CheckoutCreateRequestSignals = z.infer<
   typeof CheckoutCreateRequestSignalsSchema
 >;
