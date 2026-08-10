@@ -1,0 +1,113 @@
+# Copyright 2026 UCP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Job 1: run the constraint/injector unit tests (#34/#37) that live in
+  # tests/*.test.js. `npm test` is wired in package.json but no existing
+  # workflow runs it, so a real regression in the committed models ships green.
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "lts/*"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+  # Job 2: assert the committed models equal a fresh regeneration from the
+  # pinned UCP spec release the 0.4.x line targets (README compatibility table:
+  # 0.4.x -> 2026-04-08). Catches both a broken generation pipeline (an injector
+  # regressed but the committed models were not updated) and a forgotten
+  # regeneration (committed models stale versus the pinned spec). Does not
+  # auto-commit: the committed-artifact flow stays the release path (the
+  # auto-commit approach in the closed #10 was not the direction maintainers
+  # wanted). This is a check, not a generator.
+  model-drift:
+    name: Committed models match regeneration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout js-sdk
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Checkout the pinned UCP spec (release/2026-04-08)
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Universal-Commerce-Protocol/ucp
+          ref: release/2026-04-08
+          path: .ucp-spec
+
+      - name: Install Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "lts/*"
+
+      # pre-commit/action bootstraps pre-commit via pip, so Python must be
+      # present (matches linter.yml, which pairs setup-python with the hook).
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.x"
+
+      # quicktype and typescript are locked by package-lock.json, so `npm ci`
+      # pins the generator toolchain deterministically (no floating range).
+      - name: Install dependencies
+        run: npm ci
+
+      # generate_models.sh auto-detects the source/ layout that
+      # release/2026-04-08 ships and writes src/spec_generated.ts in place.
+      - name: Regenerate models from the pinned spec
+        run: ./generate_models.sh .ucp-spec
+
+      # Normalize exactly as the committed models were normalized, by reusing
+      # the repo's own pinned pre-commit prettier hook (mirrors-prettier rev in
+      # .pre-commit-config.yaml). Single source of truth: no second prettier
+      # version to keep in sync. Raw quicktype output is unformatted, so this
+      # step is required for the byte-for-byte comparison below. Prettier exits
+      # non-zero when it rewrites the file, so let the diff step be the gate.
+      - name: Normalize (prettier, via the repo's pinned pre-commit hook)
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        continue-on-error: true
+        with:
+          extra_args: prettier --files src/spec_generated.ts
+        env:
+          # workaround for pre-commit/action not being updated to node24
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Fail if committed models differ from regeneration
+        run: |
+          if ! git diff --exit-code -- src/spec_generated.ts; then
+            echo "::error::src/spec_generated.ts is out of sync with the pinned UCP spec (release/2026-04-08). Regenerate with 'npm run generate -- /path/to/ucp' (ucp checked out at release/2026-04-08), run pre-commit to format, and commit src/spec_generated.ts."
+            exit 1
+          fi
+          echo "Committed models match regeneration from the pinned spec."
