@@ -42,6 +42,12 @@ export type CheckoutResponseStatus = z.infer<
   typeof CheckoutResponseStatusSchema
 >;
 
+export const TransportSchema = z.enum(["a2a", "embedded", "mcp", "rest"]);
+export type Transport = z.infer<typeof TransportSchema>;
+
+export const UcpResponseStatusSchema = z.enum(["error", "success"]);
+export type UcpResponseStatus = z.infer<typeof UcpResponseStatusSchema>;
+
 // Adjustment status.
 
 export const AdjustmentStatusSchema = z.enum([
@@ -81,17 +87,12 @@ export type Method = z.infer<typeof MethodSchema>;
 export const MethodTypeSchema = z.enum(["pickup", "shipping"]);
 export type MethodType = z.infer<typeof MethodTypeSchema>;
 
-export const PaymentHandlerResponseSchema = z.object({
-  config: z.record(z.string(), z.any()),
-  config_schema: z.string(),
-  id: z.string(),
-  instrument_schemas: z.array(z.string()),
-  name: z.string(),
-  spec: z.string(),
-  version: z.string(),
+export const AvailablePaymentInstrumentSchema = z.object({
+  constraints: z.record(z.string(), z.any()).optional(),
+  type: z.string(),
 });
-export type PaymentHandlerResponse = z.infer<
-  typeof PaymentHandlerResponseSchema
+export type AvailablePaymentInstrument = z.infer<
+  typeof AvailablePaymentInstrumentSchema
 >;
 
 export const SigningKeySchema = z.object({
@@ -259,13 +260,24 @@ export type Line = z.infer<typeof LineSchema>;
 
 export const CapabilityResponseSchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
-  extends: z.string().optional(),
-  name: z.string(),
+  extends: z.union([z.array(z.string()), z.string()]).optional(),
+  id: z.string().optional(),
   schema: z.string().optional(),
   spec: z.string().optional(),
   version: z.string(),
 });
 export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
+
+export const ServiceResponseSchema = z.object({
+  config: z.record(z.string(), z.any()).optional(),
+  endpoint: z.string().optional(),
+  id: z.string().optional(),
+  schema: z.string().optional(),
+  spec: z.string().optional(),
+  transport: TransportSchema,
+  version: z.string(),
+});
+export type ServiceResponse = z.infer<typeof ServiceResponseSchema>;
 
 export const LineItemQuantityRefSchema = z.object({
   id: z.string(),
@@ -526,10 +538,20 @@ export type SearchResponsePagination = z.infer<
   typeof SearchResponsePaginationSchema
 >;
 
-export const PaymentSchema = z.object({
-  handlers: z.array(PaymentHandlerResponseSchema).optional(),
+export const PaymentHandlerResponseSchema = z.object({
+  available_instruments: z
+    .array(AvailablePaymentInstrumentSchema)
+    .min(1)
+    .optional(),
+  config: z.record(z.string(), z.any()).optional(),
+  id: z.string(),
+  schema: z.string().optional(),
+  spec: z.string().optional(),
+  version: z.string(),
 });
-export type Payment = z.infer<typeof PaymentSchema>;
+export type PaymentHandlerResponse = z.infer<
+  typeof PaymentHandlerResponseSchema
+>;
 
 export const UcpServiceSchema = z.object({
   a2a: A2ASchema.optional(),
@@ -599,8 +621,15 @@ export const TotalsResponseSchema = z.object({
 export type TotalsResponse = z.infer<typeof TotalsResponseSchema>;
 
 export const UcpResponseSchema = z.object({
-  capabilities: z.record(z.string(), z.array(CapabilityResponseSchema)),
-  version: z.string(),
+  capabilities: z
+    .record(z.string(), z.array(CapabilityResponseSchema))
+    .optional(),
+  payment_handlers: z
+    .record(z.string(), z.array(PaymentHandlerResponseSchema))
+    .optional(),
+  services: z.record(z.string(), z.array(ServiceResponseSchema)).optional(),
+  status: UcpResponseStatusSchema.optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type UcpResponse = z.infer<typeof UcpResponseSchema>;
 
@@ -938,6 +967,11 @@ export const SearchRequestSchema = z.object({
   signals: LookupRequestSignalsSchema.optional(),
 });
 export type SearchRequest = z.infer<typeof SearchRequestSchema>;
+
+export const PaymentSchema = z.object({
+  handlers: z.array(PaymentHandlerResponseSchema).optional(),
+});
+export type Payment = z.infer<typeof PaymentSchema>;
 
 export const UcpSchema = z.object({
   capabilities: z.array(CapabilityDiscoverySchema),
