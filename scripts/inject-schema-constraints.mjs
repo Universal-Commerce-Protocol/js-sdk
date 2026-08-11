@@ -123,6 +123,7 @@ const CONSTRAINT_KEYS = [
   "minItems",
   "maxItems",
   "uniqueItems",
+  "minProperties",
 ];
 
 /** Effective value constraints for a schema node, following $ref + allOf. */
@@ -306,6 +307,8 @@ function describeConstraint(propertyNode, file) {
   if (eff.minItems !== undefined) descriptor.minItems = eff.minItems;
   if (eff.maxItems !== undefined) descriptor.maxItems = eff.maxItems;
   if (eff.uniqueItems === true) descriptor.uniqueItems = true;
+  if (eff.minProperties !== undefined)
+    descriptor.minProperties = eff.minProperties;
   const containsGroups = collectContainsGroups(propertyNode, file);
   if (containsGroups.length) descriptor.containsGroups = containsGroups;
   const signature = JSON.stringify(descriptor);
@@ -326,6 +329,12 @@ const constraintIndex = new Map();
 // registries) render as `z.record` and are intentionally not handled here; they
 // need a distinct record-key mechanism. setKey -> Map(signature -> descriptor).
 const propertyNamesIndex = new Map();
+
+// Object-level `minProperties`, keyed by the generated object's sorted named
+// property set. The descriptor also records whether unknown properties must be
+// retained before counting, matching JSON Schema's default extra-key behavior.
+// setKey -> Map(signature -> descriptor).
+const minPropertiesIndex = new Map();
 
 function recordObject(properties, file) {
   const setKey = Object.keys(properties).sort().join(",");
@@ -384,6 +393,22 @@ function recordPropertyNames(node, properties, file) {
   propertyNamesIndex.get(setKey).set(signature, descriptor);
 }
 
+function recordMinProperties(node, properties) {
+  if (node.minProperties === undefined) {
+    return;
+  }
+  const setKey = Object.keys(properties).sort().join(",");
+  const descriptor = {
+    minimum: node.minProperties,
+    retainAdditionalProperties: node.additionalProperties !== false,
+  };
+  const signature = JSON.stringify(descriptor);
+  if (!minPropertiesIndex.has(setKey)) {
+    minPropertiesIndex.set(setKey, new Map());
+  }
+  minPropertiesIndex.get(setKey).set(signature, descriptor);
+}
+
 function walkSchema(node, file, seen = new Set(), depth = 0) {
   if (!node || typeof node !== "object" || depth > 64) {
     return;
@@ -402,6 +427,7 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
   if (resolvedObject) {
     recordObject(resolvedObject.properties, resolvedObject.file);
     recordPropertyNames(node, resolvedObject.properties, file);
+    recordMinProperties(node, resolvedObject.properties);
   }
   if (node.properties && typeof node.properties === "object") {
     for (const child of Object.values(node.properties)) {
@@ -476,6 +502,15 @@ for (const [setKey, bySignature] of propertyNamesIndex) {
     resolvedPropertyNames.set(setKey, [...bySignature.values()][0]);
   } else {
     ambiguous.push({ setKey, name: "<propertyNames>", count: bySignature.size });
+  }
+}
+
+const resolvedMinProperties = new Map();
+for (const [setKey, bySignature] of minPropertiesIndex) {
+  if (bySignature.size === 1) {
+    resolvedMinProperties.set(setKey, [...bySignature.values()][0]);
+  } else {
+    ambiguous.push({ setKey, name: "<minProperties>", count: bySignature.size });
   }
 }
 
@@ -571,6 +606,14 @@ function renderPropertyNamesRefine(pattern) {
   );
 }
 
+function renderMinPropertiesRefine(minimum, retainAdditionalProperties) {
+  return (
+    (retainAdditionalProperties ? `.catchall(z.any())` : "") +
+    `.refine((value) => Object.keys(value).length >= ${minimum}, ` +
+    `{ message: "Object must contain at least ${minimum} property(ies) (minProperties)" })`
+  );
+}
+
 /**
  * Zod methods for a descriptor given the generated field's base kind.
  * Returns null when the base kind is incompatible with the constraint
@@ -593,6 +636,8 @@ function methodsFor(descriptor, baseKind) {
     descriptor.maxItems !== undefined ||
     descriptor.uniqueItems !== undefined ||
     descriptor.containsGroups !== undefined;
+
+  const isRecord = descriptor.minProperties !== undefined;
 
   if (isNumeric) {
     if (baseKind !== "number") return null;
@@ -620,6 +665,11 @@ function methodsFor(descriptor, baseKind) {
     }
     if (descriptor.pattern !== undefined)
       methods.push(`.regex(${toRegexLiteral(descriptor.pattern)})`);
+  } else if (isRecord) {
+    if (baseKind !== "record") return null;
+    methods.push(
+      renderMinPropertiesRefine(descriptor.minProperties, false)
+    );
   } else if (isArray) {
     if (baseKind !== "array") return null;
     if (descriptor.minItems !== undefined)
@@ -671,6 +721,7 @@ function findBaseCall(expression, sourceFile) {
   if (method === "number") kind = "number";
   else if (method === "string") kind = "string";
   else if (method === "array") kind = "array";
+  else if (method === "record") kind = "record";
   else return null;
   return { end: baseCall.getEnd(), kind, baseCall };
 }
@@ -736,6 +787,7 @@ const report = {
   objectsMatched: 0,
   fieldsInjected: 0,
   propertyNamesInjected: 0,
+  minPropertiesInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -763,7 +815,8 @@ function handleObjectLiteral(objectLiteral) {
   const setKey = [...names].sort().join(",");
   const resolvedProperties = resolvedIndex.get(setKey);
   const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
-  if (!resolvedProperties && !propertyNamesDescriptor) {
+  const minPropertiesDescriptor = resolvedMinProperties.get(setKey);
+  if (!resolvedProperties && !propertyNamesDescriptor && !minPropertiesDescriptor) {
     return;
   }
   let matchedAny = false;
@@ -821,6 +874,26 @@ function handleObjectLiteral(objectLiteral) {
       matchedAny = true;
     }
   }
+  if (minPropertiesDescriptor) {
+    const objectCall = objectLiteral.parent;
+    if (
+      objectCall &&
+      ts.isCallExpression(objectCall) &&
+      !objectAlreadyConstrained(objectCall)
+    ) {
+      const text = renderMinPropertiesRefine(
+        minPropertiesDescriptor.minimum,
+        minPropertiesDescriptor.retainAdditionalProperties
+      );
+      edits.push({ pos: objectCall.getEnd(), text });
+      report.minPropertiesInjected += 1;
+      report.injections.push(`${setKey} :: <minProperties> ${text}`);
+      matchedAny = true;
+    } else if (objectCall && objectAlreadyConstrained(objectCall)) {
+      report.fieldsAlreadyDone += 1;
+      matchedAny = true;
+    }
+  }
   if (matchedAny) {
     report.objectsMatched += 1;
   }
@@ -858,6 +931,7 @@ process.stdout.write(
   `inject-schema-constraints: ${report.fieldsInjected} field(s) constrained ` +
     `across ${report.objectsMatched} object schema(s); ` +
     `${report.propertyNamesInjected} propertyNames key-check(s); ` +
+    `${report.minPropertiesInjected} object minProperties check(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );
