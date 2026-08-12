@@ -26,6 +26,8 @@ const {
   TotalResponseSchema,
   MediaSchema,
   ProductOptionSchema,
+  AvailablePaymentInstrumentSchema,
+  DescriptionSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -108,4 +110,28 @@ test("ProductOptionSchema accepts a non-empty values array", () => {
   assert.ok(
     accepts(ProductOptionSchema, { name: "size", values: [{ label: "S" }] })
   );
+});
+
+test("AvailablePaymentInstrumentSchema enforces constraints minProperties", () => {
+  assert.ok(
+    rejects(AvailablePaymentInstrumentSchema, {
+      type: "card",
+      constraints: {},
+    })
+  );
+  assert.ok(
+    accepts(AvailablePaymentInstrumentSchema, {
+      type: "card",
+      constraints: { network: "visa" },
+    })
+  );
+  assert.ok(accepts(AvailablePaymentInstrumentSchema, { type: "card" }));
+});
+
+test("DescriptionSchema enforces minProperties and retains additional properties", () => {
+  assert.ok(rejects(DescriptionSchema, {}));
+  assert.ok(accepts(DescriptionSchema, { plain: "Description" }));
+  assert.deepEqual(DescriptionSchema.parse({ other: "Description" }), {
+    other: "Description",
+  });
 });

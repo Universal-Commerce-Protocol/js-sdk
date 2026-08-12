@@ -88,7 +88,12 @@ export const MethodTypeSchema = z.enum(["pickup", "shipping"]);
 export type MethodType = z.infer<typeof MethodTypeSchema>;
 
 export const AvailablePaymentInstrumentSchema = z.object({
-  constraints: z.record(z.string(), z.any()).optional(),
+  constraints: z
+    .record(z.string(), z.any())
+    .refine((value) => Object.keys(value).length >= 1, {
+      message: "Object must contain at least 1 property(ies) (minProperties)",
+    })
+    .optional(),
   type: z.string(),
 });
 export type AvailablePaymentInstrument = z.infer<
@@ -447,11 +452,16 @@ export const CategorySchema = z.object({
 });
 export type Category = z.infer<typeof CategorySchema>;
 
-export const DescriptionSchema = z.object({
-  html: z.string().optional(),
-  markdown: z.string().optional(),
-  plain: z.string().optional(),
-});
+export const DescriptionSchema = z
+  .object({
+    html: z.string().optional(),
+    markdown: z.string().optional(),
+    plain: z.string().optional(),
+  })
+  .catchall(z.any())
+  .refine((value) => Object.keys(value).length >= 1, {
+    message: "Object must contain at least 1 property(ies) (minProperties)",
+  });
 export type Description = z.infer<typeof DescriptionSchema>;
 
 export const PriceSchema = z.object({
