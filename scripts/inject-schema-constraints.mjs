@@ -342,6 +342,12 @@ const propertyNamesIndex = new Map();
 // setKey -> Map(signature -> descriptor).
 const minPropertiesIndex = new Map();
 
+// Object-level numeric constraints guarded by a simple discriminator condition.
+// Every resolved object shape records either its canonical rule list or an empty
+// list, so a shape used both with and without conditions becomes ambiguous and
+// is left untouched. setKey -> Map(signature -> rules).
+const conditionalIndex = new Map();
+
 function recordObject(properties, file) {
   const setKey = Object.keys(properties).sort().join(",");
   if (!constraintIndex.has(setKey)) {
@@ -428,6 +434,148 @@ function recordMinProperties(node, properties) {
   minPropertiesIndex.get(setKey).set(signature, descriptor);
 }
 
+function numericBounds(node) {
+  if (!node || typeof node !== "object") return null;
+  const descriptor = {};
+  for (const keyword of [
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+  ]) {
+    if (typeof node[keyword] === "number") descriptor[keyword] = node[keyword];
+  }
+  return Object.keys(descriptor).length ? descriptor : null;
+}
+
+function describeConditionalRule(branch, properties) {
+  const condition = branch?.if;
+  const consequence = branch?.then;
+  if (
+    !condition ||
+    !consequence ||
+    Object.keys(branch).some((key) => key !== "if" && key !== "then") ||
+    Object.keys(condition).some(
+      (key) => key !== "properties" && key !== "required"
+    ) ||
+    !condition.properties
+  ) {
+    return null;
+  }
+  const conditionEntries = Object.entries(condition.properties);
+  if (conditionEntries.length !== 1) {
+    return null;
+  }
+  const [discriminator, discriminatorNode] = conditionEntries[0];
+  if (
+    !Array.isArray(condition.required) ||
+    condition.required.length !== 1 ||
+    condition.required[0] !== discriminator ||
+    !discriminatorNode ||
+    typeof discriminatorNode !== "object" ||
+    Object.keys(discriminatorNode).some(
+      (key) => key !== "const" && key !== "enum"
+    )
+  ) {
+    return null;
+  }
+  let values;
+  if ("const" in discriminatorNode) {
+    values = [discriminatorNode.const];
+  } else if (
+    Array.isArray(discriminatorNode.enum) &&
+    discriminatorNode.enum.length
+  ) {
+    values = discriminatorNode.enum;
+  } else {
+    return null;
+  }
+  if (
+    values.some(
+      (value) =>
+        typeof value !== "string" &&
+        typeof value !== "number" &&
+        typeof value !== "boolean"
+    )
+  ) {
+    return null;
+  }
+  const consequenceKeys = Object.keys(consequence);
+  if (
+    consequenceKeys.length === 1 &&
+    consequenceKeys[0] === "required" &&
+    Array.isArray(consequence.required) &&
+    consequence.required.length &&
+    consequence.required.every(
+      (name) => typeof name === "string" && name in properties
+    )
+  ) {
+    return {
+      kind: "required",
+      discriminator,
+      values,
+      required: [...consequence.required].sort(),
+    };
+  }
+  if (
+    consequenceKeys.length !== 1 ||
+    consequenceKeys[0] !== "properties" ||
+    !consequence.properties
+  ) {
+    return null;
+  }
+  const consequenceEntries = Object.entries(consequence.properties);
+  if (consequenceEntries.length !== 1) {
+    return null;
+  }
+  const [target, targetNode] = consequenceEntries[0];
+  const bounds = numericBounds(targetNode);
+  if (!bounds || Object.keys(targetNode).some((key) => !(key in bounds))) {
+    return null;
+  }
+  return { kind: "numeric", discriminator, values, target, ...bounds };
+}
+
+function recordConditionalRules(node, properties) {
+  const branches = [];
+  let unsupported = false;
+  if ("if" in node || "then" in node || "else" in node) {
+    if ("else" in node || !("if" in node) || !("then" in node)) {
+      unsupported = true;
+    } else {
+      branches.push({ if: node.if, then: node.then });
+    }
+  }
+  if (Array.isArray(node.allOf)) {
+    for (const branch of node.allOf) {
+      if (
+        branch &&
+        typeof branch === "object" &&
+        ("if" in branch || "then" in branch || "else" in branch)
+      ) {
+        branches.push(branch);
+      }
+    }
+  }
+  const rules = [];
+  for (const branch of branches) {
+    const rule = describeConditionalRule(branch, properties);
+    if (!rule) {
+      unsupported = true;
+      break;
+    }
+    rules.push(rule);
+  }
+  if (unsupported) rules.length = 0;
+  rules.sort((left, right) =>
+    JSON.stringify(left).localeCompare(JSON.stringify(right))
+  );
+  const setKey = Object.keys(properties).sort().join(",");
+  const signature = JSON.stringify(rules);
+  if (!conditionalIndex.has(setKey)) conditionalIndex.set(setKey, new Map());
+  conditionalIndex.get(setKey).set(signature, rules);
+}
+
 function walkSchema(node, file, seen = new Set(), depth = 0) {
   if (!node || typeof node !== "object" || depth > 64) {
     return;
@@ -447,6 +595,7 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
     recordObject(resolvedObject.properties, resolvedObject.file);
     recordPropertyNames(node, resolvedObject.properties, file);
     recordMinProperties(node, resolvedObject.properties);
+    recordConditionalRules(node, resolvedObject.properties);
   }
   if (node.properties && typeof node.properties === "object") {
     for (const child of Object.values(node.properties)) {
@@ -530,6 +679,19 @@ for (const [setKey, bySignature] of minPropertiesIndex) {
     resolvedMinProperties.set(setKey, [...bySignature.values()][0]);
   } else {
     ambiguous.push({ setKey, name: "<minProperties>", count: bySignature.size });
+  }
+}
+
+// Only inject conditional rules when every occurrence of a property set agrees
+// on the exact non-empty rule list. This includes empty signatures, preventing
+// an unrelated object with the same shape from inheriting conditional logic.
+const resolvedConditionals = new Map();
+for (const [setKey, bySignature] of conditionalIndex) {
+  if (bySignature.size === 1) {
+    const rules = [...bySignature.values()][0];
+    if (rules.length) resolvedConditionals.set(setKey, rules);
+  } else {
+    ambiguous.push({ setKey, name: "<conditional>", count: bySignature.size });
   }
 }
 
@@ -637,6 +799,42 @@ function renderMinPropertiesRefine(minimum, retainAdditionalProperties) {
     (retainAdditionalProperties ? `.catchall(z.any())` : "") +
     `.refine((value) => Object.keys(value).length >= ${minimum}, ` +
     `{ message: "Object must contain at least ${minimum} property(ies) (minProperties)" })`
+  );
+}
+
+function renderConditionalRefine(rules) {
+  const normalized = rules.map((rule) => ({
+    kind: rule.kind,
+    discriminator: rule.discriminator,
+    values: rule.values,
+    required: rule.required ?? [],
+    target: rule.target ?? null,
+    minimum: rule.minimum ?? null,
+    maximum: rule.maximum ?? null,
+    exclusiveMinimum: rule.exclusiveMinimum ?? null,
+    exclusiveMaximum: rule.exclusiveMaximum ?? null,
+  }));
+  return (
+    `.superRefine((value, ctx) => {` +
+    `for (const rule of ${JSON.stringify(normalized)}) {` +
+    `const record = value as Record<string, unknown>;` +
+    `if (!rule.values.includes(record[rule.discriminator] as never)) continue;` +
+    `if (rule.kind === "required") {` +
+    `for (const field of rule.required) {` +
+    `if (!(field in record)) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
+    `path: [field], message: "Field is required by a conditional constraint" });` +
+    `}continue;}` +
+    `if (rule.target === null) continue;` +
+    `const target = record[rule.target];` +
+    `if (typeof target !== "number") continue;` +
+    `const invalid = ` +
+    `(rule.minimum !== null && target < rule.minimum) || ` +
+    `(rule.maximum !== null && target > rule.maximum) || ` +
+    `(rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) || ` +
+    `(rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);` +
+    `if (invalid) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [rule.target], ` +
+    `message: "Value violates a conditional numeric constraint" });` +
+    `}})`
   );
 }
 
@@ -807,6 +1005,21 @@ function objectAlreadyConstrained(objectCall) {
   return false;
 }
 
+function conditionalAlreadyConstrained(objectCall) {
+  let outer = objectCall;
+  while (
+    outer.parent &&
+    ts.isPropertyAccessExpression(outer.parent) &&
+    outer.parent.expression === outer &&
+    outer.parent.parent &&
+    ts.isCallExpression(outer.parent.parent)
+  ) {
+    outer = outer.parent.parent;
+  }
+  const slice = sourceText.slice(objectCall.getEnd(), outer.getEnd());
+  return /conditional (?:numeric )?constraint/.test(slice);
+}
+
 // --- Parse the generated file and compute edits ----------------------------
 
 const sourceText = fs.readFileSync(targetPath, "utf8");
@@ -824,6 +1037,7 @@ const report = {
   fieldsInjected: 0,
   propertyNamesInjected: 0,
   minPropertiesInjected: 0,
+  conditionalsInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -852,7 +1066,13 @@ function handleObjectLiteral(objectLiteral) {
   const resolvedProperties = resolvedIndex.get(setKey);
   const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
   const minPropertiesDescriptor = resolvedMinProperties.get(setKey);
-  if (!resolvedProperties && !propertyNamesDescriptor && !minPropertiesDescriptor) {
+  const conditionalRules = resolvedConditionals.get(setKey);
+  if (
+    !resolvedProperties &&
+    !propertyNamesDescriptor &&
+    !minPropertiesDescriptor &&
+    !conditionalRules
+  ) {
     return;
   }
   let matchedAny = false;
@@ -930,6 +1150,23 @@ function handleObjectLiteral(objectLiteral) {
       matchedAny = true;
     }
   }
+  if (conditionalRules) {
+    const objectCall = objectLiteral.parent;
+    if (
+      objectCall &&
+      ts.isCallExpression(objectCall) &&
+      !conditionalAlreadyConstrained(objectCall)
+    ) {
+      const text = renderConditionalRefine(conditionalRules);
+      edits.push({ pos: objectCall.getEnd(), text });
+      report.conditionalsInjected += 1;
+      report.injections.push(`${setKey} :: <conditional> ${text}`);
+      matchedAny = true;
+    } else if (objectCall && conditionalAlreadyConstrained(objectCall)) {
+      report.fieldsAlreadyDone += 1;
+      matchedAny = true;
+    }
+  }
   if (matchedAny) {
     report.objectsMatched += 1;
   }
@@ -968,6 +1205,7 @@ process.stdout.write(
     `across ${report.objectsMatched} object schema(s); ` +
     `${report.propertyNamesInjected} propertyNames key-check(s); ` +
     `${report.minPropertiesInjected} object minProperties check(s); ` +
+    `${report.conditionalsInjected} conditional check(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );
