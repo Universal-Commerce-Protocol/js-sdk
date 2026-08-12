@@ -394,13 +394,26 @@ function recordPropertyNames(node, properties, file) {
 }
 
 function recordMinProperties(node, properties) {
-  if (node.minProperties === undefined) {
+  let minProperties = node.minProperties;
+  let additionalProperties = node.additionalProperties;
+  if (minProperties === undefined && Array.isArray(node.allOf)) {
+    for (const sub of node.allOf) {
+      if (sub && typeof sub === "object" && sub.minProperties !== undefined) {
+        minProperties = sub.minProperties;
+        if (additionalProperties === undefined) {
+          additionalProperties = sub.additionalProperties;
+        }
+        break;
+      }
+    }
+  }
+  if (minProperties === undefined) {
     return;
   }
   const setKey = Object.keys(properties).sort().join(",");
   const descriptor = {
-    minimum: node.minProperties,
-    retainAdditionalProperties: node.additionalProperties !== false,
+    minimum: minProperties,
+    retainAdditionalProperties: additionalProperties !== false,
   };
   const signature = JSON.stringify(descriptor);
   if (!minPropertiesIndex.has(setKey)) {
@@ -764,7 +777,11 @@ function objectAlreadyConstrained(objectCall) {
   const parent = objectCall.parent;
   if (parent && ts.isPropertyAccessExpression(parent)) {
     const method = parent.name.text;
-    if (method === "catchall" || method === "superRefine") {
+    if (
+      method === "catchall" ||
+      method === "superRefine" ||
+      method === "refine"
+    ) {
       return true;
     }
   }
