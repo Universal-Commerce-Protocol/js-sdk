@@ -232,11 +232,66 @@ export const ItemResponseSchema = z.object({
 });
 export type ItemResponse = z.infer<typeof ItemResponseSchema>;
 
-export const TotalResponseSchema = z.object({
-  amount: z.number().int(),
-  display_text: z.string().optional(),
-  type: z.string(),
-});
+export const TotalResponseSchema = z
+  .object({
+    amount: z.number().int(),
+    display_text: z.string().optional(),
+    type: z.string(),
+  })
+  .superRefine((value, ctx) => {
+    for (const rule of [
+      {
+        kind: "numeric",
+        discriminator: "type",
+        values: ["discount", "items_discount"],
+        required: [],
+        target: "amount",
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: 0,
+      },
+      {
+        kind: "numeric",
+        discriminator: "type",
+        values: ["subtotal", "fulfillment", "tax", "fee"],
+        required: [],
+        target: "amount",
+        minimum: 0,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+    ]) {
+      const record = value as Record<string, unknown>;
+      if (!rule.values.includes(record[rule.discriminator] as never)) continue;
+      if (rule.kind === "required") {
+        for (const field of rule.required) {
+          if (!(field in record))
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: "Field is required by a conditional constraint",
+            });
+        }
+        continue;
+      }
+      if (rule.target === null) continue;
+      const target = record[rule.target];
+      if (typeof target !== "number") continue;
+      const invalid =
+        (rule.minimum !== null && target < rule.minimum) ||
+        (rule.maximum !== null && target > rule.maximum) ||
+        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
+        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
+      if (invalid)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [rule.target],
+          message: "Value violates a conditional numeric constraint",
+        });
+    }
+  });
 export type TotalResponse = z.infer<typeof TotalResponseSchema>;
 
 export const LinkSchema = z.object({
@@ -552,11 +607,55 @@ export type SearchRequestPagination = z.infer<
   typeof SearchRequestPaginationSchema
 >;
 
-export const SearchResponsePaginationSchema = z.object({
-  cursor: z.string().optional(),
-  has_next_page: z.boolean(),
-  total_count: z.number().int().gte(0).optional(),
-});
+export const SearchResponsePaginationSchema = z
+  .object({
+    cursor: z.string().optional(),
+    has_next_page: z.boolean(),
+    total_count: z.number().int().gte(0).optional(),
+  })
+  .superRefine((value, ctx) => {
+    for (const rule of [
+      {
+        kind: "required",
+        discriminator: "has_next_page",
+        values: [true],
+        required: ["cursor"],
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+    ]) {
+      const record = value as Record<string, unknown>;
+      if (!rule.values.includes(record[rule.discriminator] as never)) continue;
+      if (rule.kind === "required") {
+        for (const field of rule.required) {
+          if (!(field in record))
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: "Field is required by a conditional constraint",
+            });
+        }
+        continue;
+      }
+      if (rule.target === null) continue;
+      const target = record[rule.target];
+      if (typeof target !== "number") continue;
+      const invalid =
+        (rule.minimum !== null && target < rule.minimum) ||
+        (rule.maximum !== null && target > rule.maximum) ||
+        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
+        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
+      if (invalid)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [rule.target],
+          message: "Value violates a conditional numeric constraint",
+        });
+    }
+  });
 export type SearchResponsePagination = z.infer<
   typeof SearchResponsePaginationSchema
 >;

@@ -24,6 +24,7 @@ const assert = require("node:assert/strict");
 const {
   PriceSchema,
   TotalResponseSchema,
+  SearchResponsePaginationSchema,
   MediaSchema,
   ProductOptionSchema,
   AvailablePaymentInstrumentSchema,
@@ -69,8 +70,41 @@ test("TotalResponseSchema accepts a negative integer amount", () => {
   assert.ok(accepts(TotalResponseSchema, { amount: -100, type: "discount" }));
 });
 
+test("TotalResponseSchema enforces conditional amount signs", () => {
+  assert.ok(rejects(TotalResponseSchema, { amount: 50, type: "discount" }));
+  assert.ok(
+    rejects(TotalResponseSchema, { amount: 50, type: "items_discount" })
+  );
+  assert.ok(rejects(TotalResponseSchema, { amount: -50, type: "subtotal" }));
+  assert.ok(rejects(TotalResponseSchema, { amount: -50, type: "tax" }));
+});
+
+test("TotalResponseSchema accepts amounts with valid conditional signs", () => {
+  assert.ok(accepts(TotalResponseSchema, { amount: -50, type: "discount" }));
+  assert.ok(accepts(TotalResponseSchema, { amount: 50, type: "subtotal" }));
+  assert.ok(accepts(TotalResponseSchema, { amount: 0, type: "fee" }));
+  assert.ok(accepts(TotalResponseSchema, { amount: -50, type: "custom" }));
+});
+
 test("TotalResponseSchema still rejects a non-integer amount", () => {
   assert.ok(rejects(TotalResponseSchema, { amount: 1.5, type: "discount" }));
+});
+
+// --- SearchResponsePaginationSchema: conditional required ------------------
+// cursor is required only when has_next_page is true.
+
+test("pagination requires a cursor when another page is available", () => {
+  assert.ok(rejects(SearchResponsePaginationSchema, { has_next_page: true }));
+  assert.ok(
+    accepts(SearchResponsePaginationSchema, {
+      has_next_page: true,
+      cursor: "next-page",
+    })
+  );
+});
+
+test("pagination allows an absent cursor on the final page", () => {
+  assert.ok(accepts(SearchResponsePaginationSchema, { has_next_page: false }));
 });
 
 // --- MediaSchema: integer + minimum on dimensions --------------------------
