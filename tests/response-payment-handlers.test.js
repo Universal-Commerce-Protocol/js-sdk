@@ -244,6 +244,32 @@ test("envelope rejects a service missing the required transport / version", () =
   );
 });
 
+test("envelope rejects malformed registry keys", () => {
+  for (const [registry, value] of [
+    ["capabilities", [{ version: "2026-04-08" }]],
+    ["payment_handlers", [{ id: "h", version: "2026-04-08" }]],
+    ["services", [serviceEntry]],
+  ]) {
+    assert.ok(
+      rejects(UcpResponseSchema, {
+        version: "2026-04-08",
+        [registry]: { "bad KEY!": value },
+      }),
+      `${registry} must reject keys outside the reverse-domain pattern`
+    );
+  }
+});
+
+test("envelope accepts reverse-domain registry keys", () => {
+  assert.ok(accepts(UcpResponseSchema, goldenCheckoutEnvelope));
+  assert.ok(
+    accepts(UcpResponseSchema, {
+      version: "2026-04-08",
+      services: { "com.example.service": [serviceEntry] },
+    })
+  );
+});
+
 // --- status: modeled and retained (base enum success/error) -----------------
 
 test("envelope RETAINS status (was stripped); accepts success/error, rejects other", () => {

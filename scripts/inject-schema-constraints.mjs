@@ -309,6 +309,12 @@ function describeConstraint(propertyNode, file) {
   if (eff.uniqueItems === true) descriptor.uniqueItems = true;
   if (eff.minProperties !== undefined)
     descriptor.minProperties = eff.minProperties;
+  const propertyNamesPattern = resolvePropertyNamesPattern(
+    propertyNode.propertyNames,
+    file
+  );
+  if (propertyNamesPattern !== null)
+    descriptor.propertyNamesPattern = propertyNamesPattern;
   const containsGroups = collectContainsGroups(propertyNode, file);
   if (containsGroups.length) descriptor.containsGroups = containsGroups;
   const signature = JSON.stringify(descriptor);
@@ -619,6 +625,13 @@ function renderPropertyNamesRefine(pattern) {
   );
 }
 
+function renderRecordKeyPattern(pattern) {
+  return (
+    `.refine((value) => Object.keys(value).every((key) => ${toRegexLiteral(pattern)}.test(key)), ` +
+    `{ message: "Record keys must match the required pattern (propertyNames)" })`
+  );
+}
+
 function renderMinPropertiesRefine(minimum, retainAdditionalProperties) {
   return (
     (retainAdditionalProperties ? `.catchall(z.any())` : "") +
@@ -649,8 +662,9 @@ function methodsFor(descriptor, baseKind) {
     descriptor.maxItems !== undefined ||
     descriptor.uniqueItems !== undefined ||
     descriptor.containsGroups !== undefined;
-
-  const isRecord = descriptor.minProperties !== undefined;
+  const isRecord =
+    descriptor.minProperties !== undefined ||
+    descriptor.propertyNamesPattern !== undefined;
 
   if (isNumeric) {
     if (baseKind !== "number") return null;
@@ -680,9 +694,14 @@ function methodsFor(descriptor, baseKind) {
       methods.push(`.regex(${toRegexLiteral(descriptor.pattern)})`);
   } else if (isRecord) {
     if (baseKind !== "record") return null;
-    methods.push(
-      renderMinPropertiesRefine(descriptor.minProperties, false)
-    );
+    if (descriptor.minProperties !== undefined) {
+      methods.push(
+        renderMinPropertiesRefine(descriptor.minProperties, false)
+      );
+    }
+    if (descriptor.propertyNamesPattern !== undefined) {
+      methods.push(renderRecordKeyPattern(descriptor.propertyNamesPattern));
+    }
   } else if (isArray) {
     if (baseKind !== "array") return null;
     if (descriptor.minItems !== undefined)

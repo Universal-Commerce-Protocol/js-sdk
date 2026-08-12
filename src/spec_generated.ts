@@ -646,11 +646,34 @@ export type TotalsResponse = z.infer<typeof TotalsResponseSchema>;
 export const UcpResponseSchema = z.object({
   capabilities: z
     .record(z.string(), z.array(CapabilityResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
     .optional(),
   payment_handlers: z
     .record(z.string(), z.array(PaymentHandlerResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
     .optional(),
-  services: z.record(z.string(), z.array(ServiceResponseSchema)).optional(),
+  services: z
+    .record(z.string(), z.array(ServiceResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
+    .optional(),
   status: UcpResponseStatusSchema.optional(),
   version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
