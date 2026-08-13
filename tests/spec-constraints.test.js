@@ -23,6 +23,7 @@ const assert = require("node:assert/strict");
 
 const {
   PriceSchema,
+  PriceFilterSchema,
   TotalResponseSchema,
   TotalsResponseSchema,
   SearchResponsePaginationSchema,
@@ -30,6 +31,8 @@ const {
   ProductOptionSchema,
   ProductSchema,
   LookupRequestSchema,
+  LineItemCreateRequestSchema,
+  LineItemUpdateRequestSchema,
   CapabilityResponseSchema,
   ServiceResponseSchema,
   PaymentHandlerResponseSchema,
@@ -66,6 +69,58 @@ test("PriceSchema: the exact invalid payloads from issue #33 are rejected", () =
   assert.ok(rejects(PriceSchema, { amount: -50 }));
   assert.ok(rejects(PriceSchema, { amount: 9.99 }));
   assert.ok(rejects(PriceSchema, { currency: "usd" }));
+});
+
+// --- Projected request constraints -----------------------------------------
+// create/update projections must retain the constraints from their source
+// schemas even after omitted fields change the generated object's property set.
+
+test("PriceFilterSchema enforces amount constraints on min and max", () => {
+  assert.ok(rejects(PriceFilterSchema, { min: -1 }));
+  assert.ok(rejects(PriceFilterSchema, { max: 9.99 }));
+  assert.ok(accepts(PriceFilterSchema, { min: 0, max: 500 }));
+});
+
+test("LineItemCreateRequestSchema enforces positive integer quantity", () => {
+  assert.ok(
+    rejects(LineItemCreateRequestSchema, {
+      item: { id: "item_1" },
+      quantity: 0,
+    })
+  );
+  assert.ok(
+    rejects(LineItemCreateRequestSchema, {
+      item: { id: "item_1" },
+      quantity: 1.5,
+    })
+  );
+  assert.ok(
+    accepts(LineItemCreateRequestSchema, {
+      item: { id: "item_1" },
+      quantity: 1,
+    })
+  );
+});
+
+test("LineItemUpdateRequestSchema enforces positive integer quantity", () => {
+  assert.ok(
+    rejects(LineItemUpdateRequestSchema, {
+      item: { id: "item_1" },
+      quantity: 0,
+    })
+  );
+  assert.ok(
+    rejects(LineItemUpdateRequestSchema, {
+      item: { id: "item_1" },
+      quantity: 1.5,
+    })
+  );
+  assert.ok(
+    accepts(LineItemUpdateRequestSchema, {
+      item: { id: "item_1" },
+      quantity: 1,
+    })
+  );
 });
 
 // --- TotalResponseSchema: object-scoped correctness ------------------------

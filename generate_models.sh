@@ -44,10 +44,10 @@ else
   exit 1
 fi
 
-# Schema tree (with intact $refs) used to recover the value constraints
-# quicktype's typescript-zod target drops. Captured before any projection so
-# cross-file $refs resolve as authored.
-CONSTRAINT_SCHEMA_DIR="$SPEC_DIR/schemas"
+# Raw schema tree (with intact authored $refs) used to recover the value
+# constraints quicktype's typescript-zod target drops.
+RAW_CONSTRAINT_SCHEMA_DIR="$SPEC_DIR/schemas"
+PROJECTED_CONSTRAINT_SCHEMA_DIR=""
 
 TMP_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/ucp-spec-generated.XXXXXX.ts")"
 PROJECTED_SPEC_DIR=""
@@ -63,6 +63,7 @@ if [[ "$SCHEMA_LAYOUT" == "source" ]]; then
   PROJECTED_SPEC_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ucp-js-sdk-projected.XXXXXX")"
   node scripts/project-current-ucp-schemas.mjs "$SPEC_DIR" "$PROJECTED_SPEC_DIR"
   SPEC_DIR="$PROJECTED_SPEC_DIR"
+  PROJECTED_CONSTRAINT_SCHEMA_DIR="$SPEC_DIR/schemas"
 fi
 
 QUICKTYPE_ARGS=(
@@ -115,5 +116,10 @@ npx quicktype "${QUICKTYPE_ARGS[@]}"
 node scripts/normalize-generated-schemas.mjs "$TMP_OUTPUT" src/spec_generated.ts
 
 # Re-attach the value constraints (minimum, pattern, type: integer, ...) that
-# quicktype's typescript-zod target drops. See scripts/inject-schema-constraints.mjs.
-node scripts/inject-schema-constraints.mjs "$CONSTRAINT_SCHEMA_DIR" src/spec_generated.ts
+# quicktype's typescript-zod target drops. The raw schema pass preserves
+# authored cross-file constraints; the projected pass then fills constraints on
+# create/update schemas that only exist after request projection.
+node scripts/inject-schema-constraints.mjs "$RAW_CONSTRAINT_SCHEMA_DIR" src/spec_generated.ts
+if [[ -n "$PROJECTED_CONSTRAINT_SCHEMA_DIR" ]]; then
+  node scripts/inject-schema-constraints.mjs "$PROJECTED_CONSTRAINT_SCHEMA_DIR" src/spec_generated.ts
+fi
