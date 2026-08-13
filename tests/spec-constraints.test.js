@@ -29,6 +29,7 @@ const {
   ProductOptionSchema,
   AvailablePaymentInstrumentSchema,
   DescriptionSchema,
+  OrderConfirmationSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -168,4 +169,26 @@ test("DescriptionSchema enforces minProperties and retains additional properties
   assert.deepEqual(DescriptionSchema.parse({ other: "Description" }), {
     other: "Description",
   });
+});
+
+test("MediaSchema rejects a url that is not a URL (format: uri)", () => {
+  assert.ok(rejects(MediaSchema, { type: "image", url: "not a url" }));
+  assert.ok(
+    rejects(MediaSchema, { type: "image", url: "cdn.example.com/1.png" })
+  );
+  assert.ok(
+    accepts(MediaSchema, { type: "image", url: "https://cdn.example/1.png" })
+  );
+});
+
+test("OrderConfirmationSchema rejects a non-URL permalink_url (format: uri)", () => {
+  assert.ok(
+    rejects(OrderConfirmationSchema, { id: "o_1", permalink_url: "/orders/1" })
+  );
+  assert.ok(
+    accepts(OrderConfirmationSchema, {
+      id: "o_1",
+      permalink_url: "https://shop.example/orders/1",
+    })
+  );
 });

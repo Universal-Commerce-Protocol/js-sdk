@@ -226,7 +226,7 @@ export type LookupRequestSignals = CheckoutCreateRequestSignals;
 
 export const ItemResponseSchema = z.object({
   id: z.string(),
-  image_url: z.string().optional(),
+  image_url: z.string().url().optional(),
   price: z.number().int().gte(0),
   title: z.string(),
 });
@@ -297,7 +297,7 @@ export type TotalResponse = z.infer<typeof TotalResponseSchema>;
 export const LinkSchema = z.object({
   title: z.string().optional(),
   type: z.string(),
-  url: z.string(),
+  url: z.string().url(),
 });
 export type Link = z.infer<typeof LinkSchema>;
 
@@ -321,7 +321,7 @@ export type LookupResponseMessage = CheckoutResponseMessage;
 export const OrderConfirmationSchema = z.object({
   id: z.string(),
   label: z.string().optional(),
-  permalink_url: z.string(),
+  permalink_url: z.string().url(),
 });
 export type OrderConfirmation = z.infer<typeof OrderConfirmationSchema>;
 
@@ -335,18 +335,18 @@ export const CapabilityResponseSchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
   extends: z.union([z.array(z.string()), z.string()]).optional(),
   id: z.string().optional(),
-  schema: z.string().optional(),
-  spec: z.string().optional(),
+  schema: z.string().url().optional(),
+  spec: z.string().url().optional(),
   version: z.string(),
 });
 export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
 
 export const ServiceResponseSchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
-  endpoint: z.string().optional(),
+  endpoint: z.string().url().optional(),
   id: z.string().optional(),
-  schema: z.string().optional(),
-  spec: z.string().optional(),
+  schema: z.string().url().optional(),
+  spec: z.string().url().optional(),
   transport: TransportSchema,
   version: z.string(),
 });
@@ -529,7 +529,7 @@ export const MediaSchema = z.object({
   alt_text: z.string().optional(),
   height: z.number().int().gte(1).optional(),
   type: z.string(),
-  url: z.string(),
+  url: z.string().url(),
   width: z.number().int().gte(1).optional(),
 });
 export type Media = z.infer<typeof MediaSchema>;
@@ -667,8 +667,8 @@ export const PaymentHandlerResponseSchema = z.object({
     .optional(),
   config: z.record(z.string(), z.any()).optional(),
   id: z.string(),
-  schema: z.string().optional(),
-  spec: z.string().optional(),
+  schema: z.string().url().optional(),
+  spec: z.string().url().optional(),
   version: z.string(),
 });
 export type PaymentHandlerResponse = z.infer<
@@ -796,7 +796,7 @@ export const FulfillmentEventSchema = z.object({
   line_items: z.array(EventLineItemSchema),
   occurred_at: z.coerce.date(),
   tracking_number: z.string().optional(),
-  tracking_url: z.string().optional(),
+  tracking_url: z.string().url().optional(),
   type: z.string(),
 });
 export type FulfillmentEvent = z.infer<typeof FulfillmentEventSchema>;
@@ -837,7 +837,7 @@ export const CheckoutWithAp2MandateSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -968,7 +968,7 @@ export const CartResponseSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -1022,7 +1022,7 @@ export const CheckoutWithCartResponseSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -1138,7 +1138,7 @@ export const CheckoutResponseSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -1211,7 +1211,7 @@ export const CheckoutWithBuyerConsentResponseSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerWithConsentResponseSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -1353,7 +1353,7 @@ export const VariantSchema = z.object({
   tags: z.array(z.string()).optional(),
   title: z.string(),
   unit_price: FluffyUnitPriceSchema.optional(),
-  url: z.string().optional(),
+  url: z.string().url().optional(),
 });
 export type Variant = z.infer<typeof VariantSchema>;
 
@@ -1370,7 +1370,7 @@ export const SearchResponseProductSchema = z.object({
   rating: RatingSchema.optional(),
   tags: z.array(z.string()).optional(),
   title: z.string(),
-  url: z.string().optional(),
+  url: z.string().url().optional(),
   variants: z.array(VariantSchema).min(1),
 });
 export type SearchResponseProduct = z.infer<typeof SearchResponseProductSchema>;
@@ -1402,7 +1402,7 @@ export const OrderSchema = z.object({
   label: z.string().optional(),
   line_items: z.array(OrderLineItemSchema),
   messages: z.array(CheckoutResponseMessageSchema).optional(),
-  permalink_url: z.string(),
+  permalink_url: z.string().url(),
   totals: z.array(TotalsResponseSchema).superRefine((items, ctx) => {
     for (const rule of [
       { property: "type", value: "subtotal", min: 1, max: 1 },
@@ -1435,7 +1435,7 @@ export const CheckoutWithDiscountResponseSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -1499,7 +1499,7 @@ export const CheckoutWithFulfillmentResponseSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerSchema.optional(),
   context: CheckoutCreateRequestContextSchema.optional(),
-  continue_url: z.string().optional(),
+  continue_url: z.string().url().optional(),
   currency: z.string(),
   expires_at: z.coerce.date().optional(),
   id: z.string(),
@@ -1554,7 +1554,7 @@ export const LookupResponseProductSchema = z.object({
   rating: RatingSchema.optional(),
   tags: z.array(z.string()).optional(),
   title: z.string(),
-  url: z.string().optional(),
+  url: z.string().url().optional(),
   variants: z.array(CatalogLookupSchema).min(1),
 });
 export type LookupResponseProduct = z.infer<typeof LookupResponseProductSchema>;
