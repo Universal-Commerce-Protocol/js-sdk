@@ -200,18 +200,27 @@ function resolveObject(node, file, seen = new Set(), depth = 0) {
     return resolveObject(resolved.node, resolved.file, seen, depth + 1);
   }
   let properties = {};
+  let propertyFiles = {};
   if (Array.isArray(node.allOf)) {
     for (const sub of node.allOf) {
       const resolved = resolveObject(sub, file, new Set(seen), depth + 1);
       if (resolved) {
         properties = { ...resolved.properties, ...properties };
+        propertyFiles = { ...resolved.propertyFiles, ...propertyFiles };
       }
     }
   }
   if (node.properties && typeof node.properties === "object") {
     properties = { ...properties, ...node.properties };
+    // Own properties live in this file, so their (possibly relative) $refs
+    // resolve against it, not against the object that inherits them via allOf.
+    for (const name of Object.keys(node.properties)) {
+      propertyFiles[name] = file;
+    }
   }
-  return Object.keys(properties).length ? { properties, file } : null;
+  return Object.keys(properties).length
+    ? { properties, propertyFiles, file }
+    : null;
 }
 
 /**
@@ -366,14 +375,21 @@ const minPropertiesIndex = new Map();
 // is left untouched. setKey -> Map(signature -> rules).
 const conditionalIndex = new Map();
 
-function recordObject(properties, file) {
+function recordObject(properties, file, propertyFiles) {
   const setKey = Object.keys(properties).sort().join(",");
   if (!constraintIndex.has(setKey)) {
     constraintIndex.set(setKey, new Map());
   }
   const byProperty = constraintIndex.get(setKey);
   for (const [name, propertyNode] of Object.entries(properties)) {
-    const described = describeConstraint(propertyNode, file);
+    // Each property carries the file it was authored in (it may have been
+    // inherited into this object via a cross-file `$ref`/`allOf`, in which
+    // case its own relative `$ref`s must resolve against that file, not the
+    // inheriting object's). Fall back to the object's file when unset.
+    const described = describeConstraint(
+      propertyNode,
+      (propertyFiles && propertyFiles[name]) || file
+    );
     if (!described) {
       continue;
     }
@@ -629,7 +645,11 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
   }
   const resolvedObject = resolveObject(node, file);
   if (resolvedObject) {
-    recordObject(resolvedObject.properties, resolvedObject.file);
+    recordObject(
+      resolvedObject.properties,
+      resolvedObject.file,
+      resolvedObject.propertyFiles
+    );
     recordPropertyNames(node, resolvedObject.properties, file);
     recordMinProperties(node, resolvedObject.properties);
     recordConditionalRules(node, resolvedObject.properties);
