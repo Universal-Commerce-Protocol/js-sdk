@@ -122,7 +122,23 @@ test("TotalsResponseSchema does not require display_text for well-known types", 
     "total",
   ]) {
     assert.ok(accepts(TotalsResponseSchema, { type, amount: 100 }), type);
+    assert.ok(
+      accepts(TotalsResponseSchema, {
+        type,
+        amount: 100,
+        display_text: "Label",
+      }),
+      `${type} with display_text`
+    );
   }
+});
+
+test("TotalsResponseSchema does not trigger conditional display_text constraint when type is missing", () => {
+  const result = TotalsResponseSchema.safeParse({ amount: 100 });
+  assert.strictEqual(result.success, false);
+  const issues = result.error.issues;
+  assert.ok(issues.some((issue) => issue.path[0] === "type"));
+  assert.ok(!issues.some((issue) => issue.path[0] === "display_text"));
 });
 
 // --- SearchResponsePaginationSchema: conditional required ------------------

@@ -266,12 +266,12 @@ export const TotalResponseSchema = z
       },
     ]) {
       const record = value as Record<string, unknown>;
-      if (
-        rule.negated
-          ? rule.values.includes(record[rule.discriminator] as never)
-          : !rule.values.includes(record[rule.discriminator] as never)
-      )
-        continue;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
       if (rule.kind === "required") {
         for (const field of rule.required) {
           if (!(field in record))
@@ -636,12 +636,12 @@ export const SearchResponsePaginationSchema = z
       },
     ]) {
       const record = value as Record<string, unknown>;
-      if (
-        rule.negated
-          ? rule.values.includes(record[rule.discriminator] as never)
-          : !rule.values.includes(record[rule.discriminator] as never)
-      )
-        continue;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
       if (rule.kind === "required") {
         for (const field of rule.required) {
           if (!(field in record))
@@ -778,12 +778,12 @@ export const TotalsResponseSchema = z
       },
     ]) {
       const record = value as Record<string, unknown>;
-      if (
-        rule.negated
-          ? rule.values.includes(record[rule.discriminator] as never)
-          : !rule.values.includes(record[rule.discriminator] as never)
-      )
-        continue;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
       if (rule.kind === "required") {
         for (const field of rule.required) {
           if (!(field in record))

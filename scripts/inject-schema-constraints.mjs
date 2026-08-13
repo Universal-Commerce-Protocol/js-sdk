@@ -471,7 +471,7 @@ function describeConditionalRule(branch, properties) {
     !Array.isArray(condition.required) ||
     condition.required.length !== 1 ||
     condition.required[0] !== discriminator ||
-    !rawDiscriminatorNode ||
+    rawDiscriminatorNode == null ||
     typeof rawDiscriminatorNode !== "object"
   ) {
     return null;
@@ -483,7 +483,7 @@ function describeConditionalRule(branch, properties) {
   let discriminatorNode = rawDiscriminatorNode;
   if (
     Object.keys(rawDiscriminatorNode).length === 1 &&
-    rawDiscriminatorNode.not &&
+    rawDiscriminatorNode.not != null &&
     typeof rawDiscriminatorNode.not === "object" &&
     !Array.isArray(rawDiscriminatorNode.not)
   ) {
@@ -838,9 +838,10 @@ function renderConditionalRefine(rules) {
     `.superRefine((value, ctx) => {` +
     `for (const rule of ${JSON.stringify(normalized)}) {` +
     `const record = value as Record<string, unknown>;` +
-    `if (rule.negated ` +
-    `? rule.values.includes(record[rule.discriminator] as never) ` +
-    `: !rule.values.includes(record[rule.discriminator] as never)) continue;` +
+    `const discriminatorVal = record[rule.discriminator];` +
+    `if (discriminatorVal === undefined) continue;` +
+    `const matches = (rule.values as readonly unknown[]).includes(discriminatorVal);` +
+    `if (rule.negated ? matches : !matches) continue;` +
     `if (rule.kind === "required") {` +
     `for (const field of rule.required) {` +
     `if (!(field in record)) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
