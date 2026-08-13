@@ -124,7 +124,21 @@ const CONSTRAINT_KEYS = [
   "maxItems",
   "uniqueItems",
   "minProperties",
+  "format",
 ];
+
+/**
+ * JSON Schema `format` values with a direct zod string refinement.
+ *
+ * Deliberately partial. `date-time` is absent because quicktype already emits
+ * `z.coerce.date()` for it, so the base is not a string. `uri-reference` is
+ * absent because a relative reference is not a URL and `.url()` would reject
+ * valid values. An unlisted format contributes no constraint rather than a
+ * wrong one.
+ */
+const STRING_FORMAT_METHODS = {
+  uri: ".url()",
+};
 
 /** Effective value constraints for a schema node, following $ref + allOf. */
 function effectiveConstraints(node, file, seen = new Set(), depth = 0) {
@@ -304,6 +318,10 @@ function describeConstraint(propertyNode, file) {
   if (eff.minLength !== undefined) descriptor.minLength = eff.minLength;
   if (eff.maxLength !== undefined) descriptor.maxLength = eff.maxLength;
   if (eff.pattern !== undefined) descriptor.pattern = eff.pattern;
+  // Only a format this generator can express is carried; anything else is
+  // dropped here so it can never reach methodsFor or alter a signature.
+  if (STRING_FORMAT_METHODS[eff.format] !== undefined)
+    descriptor.format = eff.format;
   if (eff.minItems !== undefined) descriptor.minItems = eff.minItems;
   if (eff.maxItems !== undefined) descriptor.maxItems = eff.maxItems;
   if (eff.uniqueItems === true) descriptor.uniqueItems = true;
@@ -854,7 +872,8 @@ function methodsFor(descriptor, baseKind) {
   const isString =
     descriptor.minLength !== undefined ||
     descriptor.maxLength !== undefined ||
-    descriptor.pattern !== undefined;
+    descriptor.pattern !== undefined ||
+    descriptor.format !== undefined;
   const isArray =
     descriptor.minItems !== undefined ||
     descriptor.maxItems !== undefined ||
@@ -890,6 +909,8 @@ function methodsFor(descriptor, baseKind) {
     }
     if (descriptor.pattern !== undefined)
       methods.push(`.regex(${toRegexLiteral(descriptor.pattern)})`);
+    if (descriptor.format !== undefined)
+      methods.push(STRING_FORMAT_METHODS[descriptor.format]);
   } else if (isRecord) {
     if (baseKind !== "record") return null;
     if (descriptor.minProperties !== undefined) {
@@ -977,6 +998,11 @@ function alreadyConstrained(baseCall) {
       "regex",
       "refine",
       "superRefine",
+      // Derived so a new entry in STRING_FORMAT_METHODS cannot reintroduce
+      // double injection: ".url()" -> "url".
+      ...Object.values(STRING_FORMAT_METHODS).map((method) =>
+        method.replace(/^\.|\(\)$/g, "")
+      ),
     ]);
     if (CONSTRAINT_METHODS.has(method)) {
       return true;
