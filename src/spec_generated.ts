@@ -503,8 +503,8 @@ export type FulfillmentDestinationResponse = z.infer<
 >;
 
 export const PriceFilterSchema = z.object({
-  max: z.number().optional(),
-  min: z.number().optional(),
+  max: z.number().int().gte(0).optional(),
+  min: z.number().int().gte(0).optional(),
 });
 export type PriceFilter = z.infer<typeof PriceFilterSchema>;
 
@@ -700,7 +700,7 @@ export type UcpService = z.infer<typeof UcpServiceSchema>;
 
 export const LineItemCreateRequestSchema = z.object({
   item: ItemCreateRequestSchema,
-  quantity: z.number(),
+  quantity: z.number().int().gte(1),
 });
 export type LineItemCreateRequest = z.infer<typeof LineItemCreateRequestSchema>;
 
@@ -721,7 +721,7 @@ export const LineItemUpdateRequestSchema = z.object({
   id: z.string().optional(),
   item: ItemUpdateRequestSchema,
   parent_id: z.string().optional(),
-  quantity: z.number(),
+  quantity: z.number().int().gte(1),
 });
 export type LineItemUpdateRequest = z.infer<typeof LineItemUpdateRequestSchema>;
 
