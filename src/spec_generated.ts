@@ -344,7 +344,7 @@ export const CapabilityResponseSchema = z.object({
   id: z.string().optional(),
   schema: z.string().url().optional(),
   spec: z.string().url().optional(),
-  version: z.string(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
 
@@ -355,7 +355,7 @@ export const ServiceResponseSchema = z.object({
   schema: z.string().url().optional(),
   spec: z.string().url().optional(),
   transport: TransportSchema,
-  version: z.string(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type ServiceResponse = z.infer<typeof ServiceResponseSchema>;
 
@@ -682,7 +682,7 @@ export const PaymentHandlerResponseSchema = z.object({
   id: z.string(),
   schema: z.string().url().optional(),
   spec: z.string().url().optional(),
-  version: z.string(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type PaymentHandlerResponse = z.infer<
   typeof PaymentHandlerResponseSchema
@@ -1378,7 +1378,7 @@ export const LookupRequestSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   context: LookupRequestContextSchema.optional(),
   filters: SearchFiltersSchema.optional(),
-  ids: z.array(z.string()),
+  ids: z.array(z.string()).min(1),
   signals: LookupRequestSignalsSchema.optional(),
 });
 export type LookupRequest = z.infer<typeof LookupRequestSchema>;
@@ -1401,7 +1401,7 @@ export const CatalogLookupSchema = z.object({
   tags: z.array(z.string()).optional(),
   title: z.string(),
   unit_price: PurpleUnitPriceSchema.optional(),
-  url: z.string().optional(),
+  url: z.string().url().optional(),
   inputs: z.array(InputCorrelationSchema).min(1),
 });
 export type CatalogLookup = z.infer<typeof CatalogLookupSchema>;
@@ -1644,8 +1644,8 @@ export const ProductSchema = z.object({
   rating: RatingSchema.optional(),
   tags: z.array(z.string()).optional(),
   title: z.string(),
-  url: z.string().optional(),
-  variants: z.array(VariantSchema),
+  url: z.string().url().optional(),
+  variants: z.array(VariantSchema).min(1),
 });
 export type Product = z.infer<typeof ProductSchema>;
 

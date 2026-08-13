@@ -28,6 +28,11 @@ const {
   SearchResponsePaginationSchema,
   MediaSchema,
   ProductOptionSchema,
+  ProductSchema,
+  LookupRequestSchema,
+  CapabilityResponseSchema,
+  ServiceResponseSchema,
+  PaymentHandlerResponseSchema,
   AvailablePaymentInstrumentSchema,
   DescriptionSchema,
   OrderConfirmationSchema,
@@ -241,5 +246,111 @@ test("OrderConfirmationSchema rejects a non-URL permalink_url (format: uri)", ()
       id: "o_1",
       permalink_url: "https://shop.example/orders/1",
     })
+  );
+});
+
+// --- Cross-file $ref provenance: entity version patterns --------------------
+// Every UCP entity inherits `version` from ucp.json#/$defs/entity via a
+// cross-file allOf `$ref`. The injector must resolve that property's own
+// file (ucp.json) so the YYYY-MM-DD pattern survives on derived schemas.
+
+test("CapabilityResponseSchema enforces the entity version pattern", () => {
+  assert.ok(
+    rejects(CapabilityResponseSchema, { version: "not-a-date", id: "cap" })
+  );
+  assert.ok(
+    accepts(CapabilityResponseSchema, {
+      version: "2026-04-08",
+      id: "cap",
+    })
+  );
+});
+
+test("ServiceResponseSchema enforces the entity version pattern", () => {
+  assert.ok(
+    rejects(ServiceResponseSchema, {
+      version: "v2",
+      transport: "rest",
+    })
+  );
+  assert.ok(
+    accepts(ServiceResponseSchema, {
+      version: "2026-04-08",
+      transport: "rest",
+    })
+  );
+});
+
+test("PaymentHandlerResponseSchema enforces the entity version pattern", () => {
+  assert.ok(
+    rejects(PaymentHandlerResponseSchema, {
+      version: "abc123",
+      id: "handler",
+      available_instruments: [{ type: "card", constraints: {} }],
+    })
+  );
+  assert.ok(
+    accepts(PaymentHandlerResponseSchema, {
+      version: "2026-04-08",
+      id: "handler",
+      available_instruments: [
+        { type: "card", constraints: { network: "visa" } },
+      ],
+    })
+  );
+});
+
+// --- Array minItems restored alongside the same provenance fix --------------
+// LookupRequest.ids and Product.variants are non-empty arrays per their
+// schemas; quicktype drops minItems, and the injector recovers it.
+
+test("LookupRequestSchema rejects an empty ids array (minItems: 1)", () => {
+  assert.ok(rejects(LookupRequestSchema, { ids: [] }));
+  assert.ok(accepts(LookupRequestSchema, { ids: ["shoes-red-42"] }));
+});
+
+const validProduct = (variants) => ({
+  description: { plain: "A product" },
+  id: "p1",
+  price_range: {
+    min: { amount: 10, currency: "USD" },
+    max: { amount: 20, currency: "USD" },
+  },
+  title: "Shoes",
+  variants,
+});
+
+test("ProductSchema rejects a product without variants (minItems: 1)", () => {
+  assert.ok(rejects(ProductSchema, validProduct([])));
+  assert.ok(
+    accepts(
+      ProductSchema,
+      validProduct([
+        {
+          id: "v1",
+          title: "Red",
+          description: { plain: "Red variant" },
+          price: { amount: 10, currency: "USD" },
+        },
+      ])
+    )
+  );
+});
+
+test("ProductSchema rejects a non-URL url (format: uri via cross-file)", () => {
+  const productWithUrl = (url) => ({
+    ...validProduct([
+      {
+        id: "v1",
+        title: "Red",
+        description: { plain: "Red variant" },
+        price: { amount: 10, currency: "USD" },
+      },
+    ]),
+    url,
+  });
+  assert.ok(rejects(ProductSchema, productWithUrl("not a url")));
+  assert.ok(
+    accepts(ProductSchema, productWithUrl("https://cdn.example/1.png"))
   );
 });
