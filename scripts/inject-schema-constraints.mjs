@@ -466,13 +466,31 @@ function describeConditionalRule(branch, properties) {
   if (conditionEntries.length !== 1) {
     return null;
   }
-  const [discriminator, discriminatorNode] = conditionEntries[0];
+  const [discriminator, rawDiscriminatorNode] = conditionEntries[0];
   if (
     !Array.isArray(condition.required) ||
     condition.required.length !== 1 ||
     condition.required[0] !== discriminator ||
-    !discriminatorNode ||
-    typeof discriminatorNode !== "object" ||
+    !rawDiscriminatorNode ||
+    typeof rawDiscriminatorNode !== "object"
+  ) {
+    return null;
+  }
+  // A `not` wrapper negates the match: the rule fires for every discriminator
+  // value EXCEPT the wrapped set (e.g. `type: { not: { enum: [...] } }` ->
+  // custom total types, which the schema requires to carry display_text).
+  let negated = false;
+  let discriminatorNode = rawDiscriminatorNode;
+  if (
+    Object.keys(rawDiscriminatorNode).length === 1 &&
+    rawDiscriminatorNode.not &&
+    typeof rawDiscriminatorNode.not === "object" &&
+    !Array.isArray(rawDiscriminatorNode.not)
+  ) {
+    negated = true;
+    discriminatorNode = rawDiscriminatorNode.not;
+  }
+  if (
     Object.keys(discriminatorNode).some(
       (key) => key !== "const" && key !== "enum"
     )
@@ -514,6 +532,7 @@ function describeConditionalRule(branch, properties) {
       kind: "required",
       discriminator,
       values,
+      negated,
       required: [...consequence.required].sort(),
     };
   }
@@ -533,7 +552,7 @@ function describeConditionalRule(branch, properties) {
   if (!bounds || Object.keys(targetNode).some((key) => !(key in bounds))) {
     return null;
   }
-  return { kind: "numeric", discriminator, values, target, ...bounds };
+  return { kind: "numeric", discriminator, values, negated, target, ...bounds };
 }
 
 function recordConditionalRules(node, properties) {
@@ -807,6 +826,7 @@ function renderConditionalRefine(rules) {
     kind: rule.kind,
     discriminator: rule.discriminator,
     values: rule.values,
+    negated: rule.negated ?? false,
     required: rule.required ?? [],
     target: rule.target ?? null,
     minimum: rule.minimum ?? null,
@@ -818,7 +838,9 @@ function renderConditionalRefine(rules) {
     `.superRefine((value, ctx) => {` +
     `for (const rule of ${JSON.stringify(normalized)}) {` +
     `const record = value as Record<string, unknown>;` +
-    `if (!rule.values.includes(record[rule.discriminator] as never)) continue;` +
+    `if (rule.negated ` +
+    `? rule.values.includes(record[rule.discriminator] as never) ` +
+    `: !rule.values.includes(record[rule.discriminator] as never)) continue;` +
     `if (rule.kind === "required") {` +
     `for (const field of rule.required) {` +
     `if (!(field in record)) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
