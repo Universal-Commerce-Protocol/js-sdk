@@ -244,6 +244,7 @@ export const TotalResponseSchema = z
         kind: "numeric",
         discriminator: "type",
         values: ["discount", "items_discount"],
+        negated: false,
         required: [],
         target: "amount",
         minimum: null,
@@ -255,6 +256,7 @@ export const TotalResponseSchema = z
         kind: "numeric",
         discriminator: "type",
         values: ["subtotal", "fulfillment", "tax", "fee"],
+        negated: false,
         required: [],
         target: "amount",
         minimum: 0,
@@ -264,7 +266,12 @@ export const TotalResponseSchema = z
       },
     ]) {
       const record = value as Record<string, unknown>;
-      if (!rule.values.includes(record[rule.discriminator] as never)) continue;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
       if (rule.kind === "required") {
         for (const field of rule.required) {
           if (!(field in record))
@@ -619,6 +626,7 @@ export const SearchResponsePaginationSchema = z
         kind: "required",
         discriminator: "has_next_page",
         values: [true],
+        negated: false,
         required: ["cursor"],
         target: null,
         minimum: null,
@@ -628,7 +636,12 @@ export const SearchResponsePaginationSchema = z
       },
     ]) {
       const record = value as Record<string, unknown>;
-      if (!rule.values.includes(record[rule.discriminator] as never)) continue;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
       if (rule.kind === "required") {
         for (const field of rule.required) {
           if (!(field in record))
@@ -734,12 +747,70 @@ export const LineItemResponseSchema = z.object({
 });
 export type LineItemResponse = z.infer<typeof LineItemResponseSchema>;
 
-export const TotalsResponseSchema = z.object({
-  amount: z.number().int(),
-  display_text: z.string().optional(),
-  type: z.string(),
-  lines: z.array(LineSchema).optional(),
-});
+export const TotalsResponseSchema = z
+  .object({
+    amount: z.number().int(),
+    display_text: z.string().optional(),
+    type: z.string(),
+    lines: z.array(LineSchema).optional(),
+  })
+  .superRefine((value, ctx) => {
+    for (const rule of [
+      {
+        kind: "required",
+        discriminator: "type",
+        values: [
+          "subtotal",
+          "items_discount",
+          "discount",
+          "fulfillment",
+          "tax",
+          "fee",
+          "total",
+        ],
+        negated: true,
+        required: ["display_text"],
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+    ]) {
+      const record = value as Record<string, unknown>;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
+      if (rule.kind === "required") {
+        for (const field of rule.required) {
+          if (!(field in record))
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: "Field is required by a conditional constraint",
+            });
+        }
+        continue;
+      }
+      if (rule.target === null) continue;
+      const target = record[rule.target];
+      if (typeof target !== "number") continue;
+      const invalid =
+        (rule.minimum !== null && target < rule.minimum) ||
+        (rule.maximum !== null && target > rule.maximum) ||
+        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
+        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
+      if (invalid)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [rule.target],
+          message: "Value violates a conditional numeric constraint",
+        });
+    }
+  });
 export type TotalsResponse = z.infer<typeof TotalsResponseSchema>;
 
 export const UcpResponseSchema = z.object({

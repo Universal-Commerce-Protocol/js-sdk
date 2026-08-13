@@ -24,6 +24,7 @@ const assert = require("node:assert/strict");
 const {
   PriceSchema,
   TotalResponseSchema,
+  TotalsResponseSchema,
   SearchResponsePaginationSchema,
   MediaSchema,
   ProductOptionSchema,
@@ -89,6 +90,56 @@ test("TotalResponseSchema accepts amounts with valid conditional signs", () => {
 
 test("TotalResponseSchema still rejects a non-integer amount", () => {
   assert.ok(rejects(TotalResponseSchema, { amount: 1.5, type: "discount" }));
+});
+
+// --- TotalsResponseSchema: conditional display_text for custom types --------
+// totals.json: when `type` is NOT one of the well-known categories, the entry
+// must carry display_text so the platform can render it by label.
+
+test("TotalsResponseSchema requires display_text for a custom type", () => {
+  assert.ok(
+    rejects(TotalsResponseSchema, { type: "shipping_surcharge", amount: 500 })
+  );
+});
+
+test("TotalsResponseSchema accepts a custom type with display_text", () => {
+  assert.ok(
+    accepts(TotalsResponseSchema, {
+      type: "shipping_surcharge",
+      amount: 500,
+      display_text: "Shipping surcharge",
+    })
+  );
+});
+
+test("TotalsResponseSchema does not require display_text for well-known types", () => {
+  for (const type of [
+    "subtotal",
+    "items_discount",
+    "discount",
+    "fulfillment",
+    "tax",
+    "fee",
+    "total",
+  ]) {
+    assert.ok(accepts(TotalsResponseSchema, { type, amount: 100 }), type);
+    assert.ok(
+      accepts(TotalsResponseSchema, {
+        type,
+        amount: 100,
+        display_text: "Label",
+      }),
+      `${type} with display_text`
+    );
+  }
+});
+
+test("TotalsResponseSchema does not trigger conditional display_text constraint when type is missing", () => {
+  const result = TotalsResponseSchema.safeParse({ amount: 100 });
+  assert.strictEqual(result.success, false);
+  const issues = result.error.issues;
+  assert.ok(issues.some((issue) => issue.path[0] === "type"));
+  assert.ok(!issues.some((issue) => issue.path[0] === "display_text"));
 });
 
 // --- SearchResponsePaginationSchema: conditional required ------------------
