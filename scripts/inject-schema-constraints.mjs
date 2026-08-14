@@ -752,6 +752,34 @@ for (const [setKey, bySignature] of conditionalIndex) {
   }
 }
 
+// --- Shared {id,quantity} line-item reference: contextual split --------------
+//
+// adjustment / fulfillment_event / expectation all declare
+// `line_items[].quantity` as `type: integer`, but only fulfillment_event and
+// expectation also add `minimum: 1`; the adjustment quantity is deliberately
+// signed (negative values represent returns/exchanges). quicktype merges the
+// three into a single shared LineItemQuantityRefSchema object, so the generic
+// ambiguity guard above leaves the whole set untouched (two conflicting
+// quantity signatures under one property set). We split the two `minimum: 1`
+// aliases into standalone objects carrying `.int().gte(1)` and keep the signed
+// adjustment on the shared `.int()` alone.
+//
+// Gated strictly on schema evidence inside the "id,quantity" property set: a
+// signed descriptor ({int}) AND a {int, minimum:1} descriptor must both be
+// present. A coincidental same-shape object can never trigger the split.
+const QUANTITY_SPLIT_TARGETS = ["EventLineItem", "ExpectationLineItem"];
+const sharedQuantitySplitNeeded = (() => {
+  const byProperty = constraintIndex.get("id,quantity");
+  if (!byProperty) return false;
+  const quantity = byProperty.get("quantity");
+  if (!quantity || quantity.size < 2) return false;
+  const signatures = [...quantity.keys()];
+  return (
+    signatures.includes(JSON.stringify({ int: true })) &&
+    signatures.some((signature) => JSON.parse(signature).minimum === 1)
+  );
+})();
+
 // --- Zod method rendering --------------------------------------------------
 
 function toRegexLiteral(pattern) {
@@ -1100,13 +1128,14 @@ const sourceFile = ts.createSourceFile(
   ts.ScriptKind.TS
 );
 
-const edits = []; // { pos, text }
+const edits = []; // { pos, remove?, text }
 const report = {
   objectsMatched: 0,
   fieldsInjected: 0,
   propertyNamesInjected: 0,
   minPropertiesInjected: 0,
   conditionalsInjected: 0,
+  sharedQuantityInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -1258,11 +1287,59 @@ function visit(node) {
 
 visit(sourceFile);
 
+// Apply the contextual {id,quantity} split: `.int()` on the shared quantity
+// (all three contexts declare `type: integer`), and the two `minimum: 1`
+// aliases become standalone objects. Idempotent: the shared `.int()` is
+// guarded by a negative lookahead, and a split alias no longer matches the
+// `= LineItemQuantityRefSchema;` pattern.
+if (sharedQuantitySplitNeeded) {
+  const sharedObjectStart = sourceText.indexOf(
+    "export const LineItemQuantityRefSchema = z.object({"
+  );
+  const sharedObjectEnd =
+    sharedObjectStart >= 0 ? sourceText.indexOf("\n});", sharedObjectStart) : -1;
+  if (sharedObjectStart >= 0 && sharedObjectEnd >= 0) {
+    const sharedObjectText = sourceText.slice(sharedObjectStart, sharedObjectEnd);
+    const quantityRef = /["']?quantity["']?: z\.number\(\)(?!\.int\(\))/.exec(
+      sharedObjectText
+    );
+    if (quantityRef) {
+      edits.push({
+        pos: sharedObjectStart + quantityRef.index + quantityRef[0].length,
+        text: ".int()",
+      });
+      report.sharedQuantityInjected += 1;
+    }
+  }
+  for (const name of QUANTITY_SPLIT_TARGETS) {
+    const aliasRef = new RegExp(
+      `export const ${name}Schema = LineItemQuantityRefSchema;`
+    );
+    const matched = aliasRef.exec(sourceText);
+    if (!matched) {
+      continue;
+    }
+    const standalone = `export const ${name}Schema = z.object({\n` +
+      `  id: z.string(),\n` +
+      `  quantity: z.number().int().gte(1),\n` +
+      `});`;
+    edits.push({
+      pos: matched.index,
+      remove: matched[0].length,
+      text: standalone,
+    });
+    report.sharedQuantityInjected += 1;
+  }
+}
+
 // Apply edits back-to-front so positions stay valid.
 edits.sort((a, b) => b.pos - a.pos);
 let output = sourceText;
 for (const edit of edits) {
-  output = output.slice(0, edit.pos) + edit.text + output.slice(edit.pos);
+  output =
+    output.slice(0, edit.pos) +
+    edit.text +
+    output.slice(edit.pos + (edit.remove ?? 0));
 }
 
 fs.writeFileSync(targetPath, output);
@@ -1275,6 +1352,7 @@ process.stdout.write(
     `${report.propertyNamesInjected} propertyNames key-check(s); ` +
     `${report.minPropertiesInjected} object minProperties check(s); ` +
     `${report.conditionalsInjected} conditional check(s); ` +
+    `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );

@@ -39,6 +39,10 @@ const {
   AvailablePaymentInstrumentSchema,
   DescriptionSchema,
   OrderConfirmationSchema,
+  LineItemQuantityRefSchema,
+  AdjustmentLineItemSchema,
+  EventLineItemSchema,
+  ExpectationLineItemSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -69,6 +73,56 @@ test("PriceSchema: the exact invalid payloads from issue #33 are rejected", () =
   assert.ok(rejects(PriceSchema, { amount: -50 }));
   assert.ok(rejects(PriceSchema, { amount: 9.99 }));
   assert.ok(rejects(PriceSchema, { currency: "usd" }));
+});
+
+// --- Shared line-item quantity refs: contextual split ----------------------
+// adjustment / fulfillment_event / expectation all declare
+// `line_items[].quantity` as `type: integer`. Only the event and expectation
+// quantities add `minimum: 1`; the adjustment quantity is signed (negative =
+// returns). The shared LineItemQuantityRefSchema carries `.int()`; the two
+// `minimum: 1` aliases are split into standalone objects with `.gte(1)`.
+
+test("shared LineItemQuantityRefSchema enforces an integer quantity", () => {
+  assert.ok(rejects(LineItemQuantityRefSchema, { id: "li_1", quantity: 1.5 }));
+  assert.ok(accepts(LineItemQuantityRefSchema, { id: "li_1", quantity: -1 }));
+});
+
+test("AdjustmentLineItemSchema allows a signed integer quantity", () => {
+  assert.ok(accepts(AdjustmentLineItemSchema, { id: "li_1", quantity: -1 }));
+  assert.ok(rejects(AdjustmentLineItemSchema, { id: "li_1", quantity: 1.5 }));
+});
+
+test("EventLineItemSchema rejects a zero quantity (minimum: 1)", () => {
+  assert.ok(rejects(EventLineItemSchema, { id: "li_1", quantity: 0 }));
+});
+
+test("EventLineItemSchema rejects a negative quantity (minimum: 1)", () => {
+  assert.ok(rejects(EventLineItemSchema, { id: "li_1", quantity: -1 }));
+});
+
+test("EventLineItemSchema rejects a fractional quantity (type: integer)", () => {
+  assert.ok(rejects(EventLineItemSchema, { id: "li_1", quantity: 1.5 }));
+});
+
+test("EventLineItemSchema accepts a positive integer quantity", () => {
+  assert.ok(accepts(EventLineItemSchema, { id: "li_1", quantity: 1 }));
+  assert.ok(accepts(EventLineItemSchema, { id: "li_1", quantity: 3 }));
+});
+
+test("ExpectationLineItemSchema rejects a zero quantity (minimum: 1)", () => {
+  assert.ok(rejects(ExpectationLineItemSchema, { id: "li_1", quantity: 0 }));
+});
+
+test("ExpectationLineItemSchema rejects a negative quantity (minimum: 1)", () => {
+  assert.ok(rejects(ExpectationLineItemSchema, { id: "li_1", quantity: -1 }));
+});
+
+test("ExpectationLineItemSchema rejects a fractional quantity (type: integer)", () => {
+  assert.ok(rejects(ExpectationLineItemSchema, { id: "li_1", quantity: 1.5 }));
+});
+
+test("ExpectationLineItemSchema accepts a positive integer quantity", () => {
+  assert.ok(accepts(ExpectationLineItemSchema, { id: "li_1", quantity: 1 }));
 });
 
 // --- Projected request constraints -----------------------------------------

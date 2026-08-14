@@ -361,14 +361,20 @@ export type ServiceResponse = z.infer<typeof ServiceResponseSchema>;
 
 export const LineItemQuantityRefSchema = z.object({
   id: z.string(),
-  quantity: z.number(),
+  quantity: z.number().int(),
 });
 export type LineItemQuantityRef = z.infer<typeof LineItemQuantityRefSchema>;
 export const AdjustmentLineItemSchema = LineItemQuantityRefSchema;
 export type AdjustmentLineItem = LineItemQuantityRef;
-export const EventLineItemSchema = LineItemQuantityRefSchema;
+export const EventLineItemSchema = z.object({
+  id: z.string(),
+  quantity: z.number().int().gte(1),
+});
 export type EventLineItem = LineItemQuantityRef;
-export const ExpectationLineItemSchema = LineItemQuantityRefSchema;
+export const ExpectationLineItemSchema = z.object({
+  id: z.string(),
+  quantity: z.number().int().gte(1),
+});
 export type ExpectationLineItem = LineItemQuantityRef;
 
 export const QuantitySchema = z.object({
