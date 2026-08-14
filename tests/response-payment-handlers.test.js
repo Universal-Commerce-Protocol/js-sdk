@@ -325,3 +325,52 @@ test("CheckoutResponseSchema.ucp models payment_handlers, services, and status",
     );
   }
 });
+
+// --- the checkout response type must REQUIRE payment_handlers ---------------
+// ucp.json#/$defs/response_checkout_schema.allOf[1] adds payment_handlers to
+// base's required set, so the checkout-only envelope cannot be the shared one
+// (which keeps everything optional so order/cart/catalog are not false-rejected).
+
+test("CheckoutResponseSchema.ucp REQUIRES payment_handlers", () => {
+  const checkoutWithoutHandlers = {
+    id: "co_1",
+    currency: "USD",
+    status: "completed",
+    totals: [
+      { type: "subtotal", amount: 100 },
+      { type: "total", amount: 100 },
+    ],
+    links: [],
+    line_items: [],
+    ucp: { version: "2026-04-08" }, // no payment_handlers -> must reject
+  };
+  assert.ok(rejects(CheckoutResponseSchema, checkoutWithoutHandlers));
+});
+
+test("CheckoutResponseSchema.ucp accepts payment_handlers when present", () => {
+  const checkoutWithHandlers = {
+    id: "co_1",
+    currency: "USD",
+    status: "completed",
+    totals: [
+      { type: "subtotal", amount: 100 },
+      { type: "total", amount: 100 },
+    ],
+    links: [],
+    line_items: [],
+    ucp: {
+      version: "2026-04-08",
+      payment_handlers: {
+        "com.example": [{ id: "h", version: "2026-04-08" }],
+      },
+    },
+  };
+  assert.ok(accepts(CheckoutResponseSchema, checkoutWithHandlers));
+});
+
+// The shared envelope stays permissive so order/cart/catalog responses are not
+// false-rejected: they must still pass with a bare ucp { version }.
+
+test("shared UcpResponseSchema keeps payment_handlers optional for other responses", () => {
+  assert.ok(accepts(UcpResponseSchema, { version: "2026-04-08" }));
+});

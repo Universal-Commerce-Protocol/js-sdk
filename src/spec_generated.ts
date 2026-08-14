@@ -45,8 +45,10 @@ export type CheckoutResponseStatus = z.infer<
 export const TransportSchema = z.enum(["a2a", "embedded", "mcp", "rest"]);
 export type Transport = z.infer<typeof TransportSchema>;
 
-export const UcpResponseStatusSchema = z.enum(["error", "success"]);
-export type UcpResponseStatus = z.infer<typeof UcpResponseStatusSchema>;
+export const UcpCheckoutResponseStatusSchema = z.enum(["error", "success"]);
+export type UcpCheckoutResponseStatus = z.infer<
+  typeof UcpCheckoutResponseStatusSchema
+>;
 
 // Adjustment status.
 
@@ -819,7 +821,7 @@ export const TotalsResponseSchema = z
   });
 export type TotalsResponse = z.infer<typeof TotalsResponseSchema>;
 
-export const UcpResponseSchema = z.object({
+export const UcpCheckoutResponseSchema = z.object({
   capabilities: z
     .record(z.string(), z.array(CapabilityResponseSchema))
     .refine(
@@ -838,8 +840,7 @@ export const UcpResponseSchema = z.object({
           /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
         ),
       { message: "Record keys must match the required pattern (propertyNames)" }
-    )
-    .optional(),
+    ),
   services: z
     .record(z.string(), z.array(ServiceResponseSchema))
     .refine(
@@ -850,10 +851,10 @@ export const UcpResponseSchema = z.object({
       { message: "Record keys must match the required pattern (propertyNames)" }
     )
     .optional(),
-  status: UcpResponseStatusSchema.optional(),
+  status: UcpCheckoutResponseStatusSchema.optional(),
   version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
-export type UcpResponse = z.infer<typeof UcpResponseSchema>;
+export type UcpCheckoutResponse = z.infer<typeof UcpCheckoutResponseSchema>;
 
 export const AdjustmentSchema = z.object({
   description: z.string().optional(),
@@ -897,6 +898,42 @@ export const OrderLineItemSchema = z.object({
   totals: z.array(TotalResponseSchema),
 });
 export type OrderLineItem = z.infer<typeof OrderLineItemSchema>;
+
+export const UcpResponseSchema = z.object({
+  capabilities: z
+    .record(z.string(), z.array(CapabilityResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
+    .optional(),
+  payment_handlers: z
+    .record(z.string(), z.array(PaymentHandlerResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
+    .optional(),
+  services: z
+    .record(z.string(), z.array(ServiceResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/.test(key)
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
+    .optional(),
+  status: UcpCheckoutResponseStatusSchema.optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type UcpResponse = z.infer<typeof UcpResponseSchema>;
 
 export const PaymentDataSchema = z.object({
   payment_data: PaymentInstrumentSchema,
@@ -949,7 +986,7 @@ export const CheckoutWithAp2MandateSchema = z.object({
       }
     }
   }),
-  ucp: UcpResponseSchema,
+  ucp: UcpCheckoutResponseSchema,
   ap2: CheckoutWithAp2MandateAp2Schema.optional(),
 });
 export type CheckoutWithAp2Mandate = z.infer<
@@ -1134,7 +1171,7 @@ export const CheckoutWithCartResponseSchema = z.object({
       }
     }
   }),
-  ucp: UcpResponseSchema,
+  ucp: UcpCheckoutResponseSchema,
   cart_id: z.string().optional(),
 });
 export type CheckoutWithCartResponse = z.infer<
@@ -1250,7 +1287,7 @@ export const CheckoutResponseSchema = z.object({
       }
     }
   }),
-  ucp: UcpResponseSchema,
+  ucp: UcpCheckoutResponseSchema,
 });
 export type CheckoutResponse = z.infer<typeof CheckoutResponseSchema>;
 
@@ -1323,7 +1360,7 @@ export const CheckoutWithBuyerConsentResponseSchema = z.object({
       }
     }
   }),
-  ucp: UcpResponseSchema,
+  ucp: UcpCheckoutResponseSchema,
 });
 export type CheckoutWithBuyerConsentResponse = z.infer<
   typeof CheckoutWithBuyerConsentResponseSchema
@@ -1547,7 +1584,7 @@ export const CheckoutWithDiscountResponseSchema = z.object({
       }
     }
   }),
-  ucp: UcpResponseSchema,
+  ucp: UcpCheckoutResponseSchema,
   discounts: CheckoutWithDiscountResponseDiscountsSchema.optional(),
 });
 export type CheckoutWithDiscountResponse = z.infer<
@@ -1611,7 +1648,7 @@ export const CheckoutWithFulfillmentResponseSchema = z.object({
       }
     }
   }),
-  ucp: UcpResponseSchema,
+  ucp: UcpCheckoutResponseSchema,
   fulfillment: FulfillmentResponseSchema.optional(),
 });
 export type CheckoutWithFulfillmentResponse = z.infer<
