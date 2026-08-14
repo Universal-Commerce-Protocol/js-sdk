@@ -123,3 +123,8 @@ node scripts/inject-schema-constraints.mjs "$RAW_CONSTRAINT_SCHEMA_DIR" src/spec
 if [[ -n "$PROJECTED_CONSTRAINT_SCHEMA_DIR" ]]; then
   node scripts/inject-schema-constraints.mjs "$PROJECTED_CONSTRAINT_SCHEMA_DIR" src/spec_generated.ts
 fi
+
+# Format the generated output to match the repo's Prettier config (the checked-in
+# file is formatted with .prettierrc; without this step regenerated output drifts
+# by indentation and formatting noise).
+npx prettier --write src/spec_generated.ts

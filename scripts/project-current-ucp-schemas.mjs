@@ -664,7 +664,7 @@ function buildEntityResponseSchema(title, entitySchema, rootDocs) {
 // their per-entity RESPONSE compat shape, and scalars/enums (version, status)
 // are carried through. An unknown registry entity fails loudly rather than
 // silently dropping the field.
-function buildResponseEnvelopeSchema(ucpSchema) {
+function buildResponseEnvelopeSchema(ucpSchema, extraRequired = []) {
   const base = ucpSchema.$defs.base;
   const properties = {};
   for (const [name, schema] of Object.entries(base.properties)) {
@@ -690,7 +690,7 @@ function buildResponseEnvelopeSchema(ucpSchema) {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "UCP Response",
     type: "object",
-    required: [...(base.required ?? [])],
+    required: [...(base.required ?? []), ...extraRequired],
     properties,
   };
 }
@@ -818,6 +818,14 @@ function writeCompatibilityDiscoverySchemas() {
   // the checkout-only requirement needs a distinct type and is filed as a
   // follow-up so order/cart/catalog responses are not falsely rejected.
   const ucpResponse = buildResponseEnvelopeSchema(ucpSchema);
+  // Checkout responses additionally require `payment_handlers`
+  // (ucp.json#/$defs/response_checkout_schema.allOf[1]), which the shared
+  // envelope cannot express without also demanding it on order/cart/catalog
+  // responses -- so only checkout aliases this distinct type.
+  const ucpCheckoutResponse = {
+    ...buildResponseEnvelopeSchema(ucpSchema, ["payment_handlers"]),
+    title: "UCP Checkout Response",
+  };
 
   const ucpDiscoveryProfile = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -876,6 +884,10 @@ function writeCompatibilityDiscoverySchemas() {
   writeJson(path.join(outputDiscoveryRoot, "ucp_service.json"), ucpService);
   writeJson(path.join(outputDiscoveryRoot, "ucp_response.json"), ucpResponse);
   writeJson(
+    path.join(outputDiscoveryRoot, "ucp_checkout_response.json"),
+    ucpCheckoutResponse
+  );
+  writeJson(
     path.join(outputDiscoveryRoot, "ucp_discovery_profile.json"),
     ucpDiscoveryProfile
   );
@@ -885,7 +897,9 @@ function writeCompatibilityCoreSchemas() {
   const ucpSchema = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     $defs: {
-      response_checkout_schema: { $ref: "../discovery/ucp_response.json" },
+      response_checkout_schema: {
+        $ref: "../discovery/ucp_checkout_response.json",
+      },
       response_order_schema: { $ref: "../discovery/ucp_response.json" },
       response_cart_schema: { $ref: "../discovery/ucp_response.json" },
       response_catalog_schema: { $ref: "../discovery/ucp_response.json" },
