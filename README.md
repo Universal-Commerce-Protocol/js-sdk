@@ -99,11 +99,11 @@ don't have one, you can clone it via:
 git clone https://github.com/Universal-Commerce-Protocol/ucp.git
 ```
 
-Then, run `npm run generate` pointing to the `spec` folder of the cloned
-repository, e.g.:
+Then, run `npm run generate` pointing to the root of the cloned repository,
+e.g.:
 
 ```bash
-npm run generate -- ucp/spec
+npm run generate -- ucp
 ```
 
 ### Building
