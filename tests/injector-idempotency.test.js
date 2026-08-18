@@ -128,3 +128,74 @@ test("the date-time conversion applies once and is idempotent", () => {
     "a second pass must not re-apply the conversion"
   );
 });
+
+// Variant-union recovery goes through the conditional superRefine path; its
+// idempotency rests on conditionalAlreadyConstrained recognising the emitted
+// message on a re-run.
+test("the variant-union required rules apply once and are idempotent", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ucp-injector-vu-"));
+  const schemaDir = path.join(dir, "schemas");
+  fs.mkdirSync(schemaDir);
+  fs.writeFileSync(
+    path.join(schemaDir, "message.json"),
+    JSON.stringify({
+      $id: "https://ucp.dev/schemas/message.json",
+      title: "Message",
+      type: "object",
+      oneOf: [
+        {
+          type: "object",
+          required: ["type", "code", "content", "severity"],
+          properties: {
+            type: { type: "string", const: "error" },
+            code: { type: "string" },
+            content: { type: "string" },
+            severity: { type: "string" },
+          },
+        },
+        {
+          type: "object",
+          required: ["type", "content"],
+          properties: {
+            type: { type: "string", const: "info" },
+            code: { type: "string" },
+            content: { type: "string" },
+          },
+        },
+      ],
+    })
+  );
+
+  const target = path.join(dir, "spec_generated.ts");
+  fs.writeFileSync(
+    target,
+    'import * as z from "zod";\n' +
+      "\n" +
+      "export const MessageSchema = z.object({\n" +
+      '  type: z.enum(["error", "info"]),\n' +
+      "  code: z.string().optional(),\n" +
+      "  content: z.string(),\n" +
+      "  severity: z.string().optional(),\n" +
+      "});\n"
+  );
+
+  execFileSync("node", [SCRIPT, schemaDir, target], { stdio: "pipe" });
+  const afterFirst = fs.readFileSync(target, "utf8");
+  assert.match(
+    afterFirst,
+    /superRefine/,
+    "the first pass appends the conditional-required refine"
+  );
+  assert.match(
+    afterFirst,
+    /"discriminator":"type"|discriminator: "type"|"discriminator": "type"/,
+    "the rules are keyed on the type discriminator"
+  );
+
+  execFileSync("node", [SCRIPT, schemaDir, target], { stdio: "pipe" });
+  assert.equal(
+    fs.readFileSync(target, "utf8"),
+    afterFirst,
+    "a second pass must not re-apply the variant rules"
+  );
+});

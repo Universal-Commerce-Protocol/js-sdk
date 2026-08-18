@@ -43,6 +43,8 @@ const {
   AdjustmentLineItemSchema,
   EventLineItemSchema,
   ExpectationLineItemSchema,
+  CheckoutResponseMessageSchema,
+  LookupResponseMessageSchema,
   CheckoutResponseSchema,
   CartResponseSchema,
   FulfillmentEventSchema,
@@ -522,4 +524,77 @@ test("fulfillment option times enforce the same string format", () => {
 test("a date-time field round-trips verbatim (string in, same string out)", () => {
   const wire = "2026-04-08T10:00:00+02:00";
   assert.equal(OccurredAtSchema.parse(wire), wire);
+});
+
+// --- message oneOf: per-variant required fields ------------------------------
+// types/message.json is a oneOf of error/warning/info variants discriminated
+// by a `type` const. Per the source schemas: an error message REQUIRES code,
+// content and severity; a warning REQUIRES code and content; an info only
+// content. quicktype collapses the union into one object with the
+// INTERSECTION of the required lists ({type, content}), so an error message
+// without code/severity used to parse. python-sdk rejects the same input.
+
+const errorMessage = {
+  type: "error",
+  code: "payment_failed",
+  content: "The payment could not be processed.",
+  severity: "recoverable",
+};
+
+test("an error message without code and severity is rejected", () => {
+  assert.ok(
+    rejects(CheckoutResponseMessageSchema, { type: "error", content: "x" })
+  );
+});
+
+test("an error message without severity is rejected", () => {
+  const { severity, ...noSeverity } = errorMessage;
+  assert.ok(rejects(CheckoutResponseMessageSchema, noSeverity));
+});
+
+test("an error message without code is rejected", () => {
+  const { code, ...noCode } = errorMessage;
+  assert.ok(rejects(CheckoutResponseMessageSchema, noCode));
+});
+
+test("a complete error message is accepted", () => {
+  assert.ok(accepts(CheckoutResponseMessageSchema, errorMessage));
+});
+
+test("a warning message without code is rejected", () => {
+  assert.ok(
+    rejects(CheckoutResponseMessageSchema, { type: "warning", content: "x" })
+  );
+});
+
+test("a warning message with code and content is accepted", () => {
+  assert.ok(
+    accepts(CheckoutResponseMessageSchema, {
+      type: "warning",
+      code: "low_stock",
+      content: "Only 2 left.",
+    })
+  );
+});
+
+test("an info message needs only type and content", () => {
+  assert.ok(
+    accepts(CheckoutResponseMessageSchema, { type: "info", content: "x" })
+  );
+  // Variants do not set additionalProperties: false, so optional fields from
+  // the union stay legal on any variant.
+  assert.ok(
+    accepts(CheckoutResponseMessageSchema, {
+      type: "info",
+      content: "x",
+      path: "$.line_items[0]",
+    })
+  );
+});
+
+test("the lookup message alias enforces the same variant rules", () => {
+  assert.ok(
+    rejects(LookupResponseMessageSchema, { type: "error", content: "x" })
+  );
+  assert.ok(accepts(LookupResponseMessageSchema, errorMessage));
 });

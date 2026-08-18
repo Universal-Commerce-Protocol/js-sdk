@@ -310,17 +310,91 @@ export const LinkSchema = z.object({
 });
 export type Link = z.infer<typeof LinkSchema>;
 
-export const CheckoutResponseMessageSchema = z.object({
-  code: z.string().optional(),
-  content: z.string(),
-  content_type: ContentTypeSchema.optional(),
-  path: z.string().optional(),
-  severity: SeveritySchema.optional(),
-  type: MessageTypeSchema,
-  image_url: z.string().optional(),
-  presentation: z.string().optional(),
-  url: z.string().optional(),
-});
+export const CheckoutResponseMessageSchema = z
+  .object({
+    code: z.string().optional(),
+    content: z.string(),
+    content_type: ContentTypeSchema.optional(),
+    path: z.string().optional(),
+    severity: SeveritySchema.optional(),
+    type: MessageTypeSchema,
+    image_url: z.string().optional(),
+    presentation: z.string().optional(),
+    url: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    for (const rule of [
+      {
+        kind: "required",
+        discriminator: "type",
+        values: ["error"],
+        negated: false,
+        required: ["code", "content", "severity", "type"],
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+      {
+        kind: "required",
+        discriminator: "type",
+        values: ["info"],
+        negated: false,
+        required: ["content", "type"],
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+      {
+        kind: "required",
+        discriminator: "type",
+        values: ["warning"],
+        negated: false,
+        required: ["code", "content", "type"],
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+    ]) {
+      const record = value as Record<string, unknown>;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
+      if (rule.kind === "required") {
+        for (const field of rule.required) {
+          if (!(field in record))
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: "Field is required by a conditional constraint",
+            });
+        }
+        continue;
+      }
+      if (rule.target === null) continue;
+      const target = record[rule.target];
+      if (typeof target !== "number") continue;
+      const invalid =
+        (rule.minimum !== null && target < rule.minimum) ||
+        (rule.maximum !== null && target > rule.maximum) ||
+        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
+        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
+      if (invalid)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [rule.target],
+          message: "Value violates a conditional numeric constraint",
+        });
+    }
+  });
 export type CheckoutResponseMessage = z.infer<
   typeof CheckoutResponseMessageSchema
 >;

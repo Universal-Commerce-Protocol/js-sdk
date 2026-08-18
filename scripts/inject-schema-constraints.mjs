@@ -381,6 +381,13 @@ const minPropertiesIndex = new Map();
 // is left untouched. setKey -> Map(signature -> rules).
 const conditionalIndex = new Map();
 
+// Per-variant required rules recovered from discriminated variant unions
+// (recordVariantUnionRules), keyed by the UNION property set -- the property
+// set of the z.object quicktype collapses the union into. Kept separate from
+// conditionalIndex; see recordVariantUnionRules for the interplay rules.
+// setKey -> Map(signature -> rules).
+const variantUnionIndex = new Map();
+
 function recordObject(properties, file, propertyFiles) {
   const setKey = Object.keys(properties).sort().join(",");
   if (!constraintIndex.has(setKey)) {
@@ -635,6 +642,196 @@ function recordConditionalRules(node, properties) {
   conditionalIndex.get(setKey).set(signature, rules);
 }
 
+/**
+ * Resolve a union branch to its full variant form: properties, per-property
+ * source files, and the variant's own `required` list ($ref and allOf
+ * followed, like resolveObject, which does not collect `required`).
+ */
+function resolveVariant(node, file, seen = new Set(), depth = 0) {
+  if (!node || typeof node !== "object" || depth > 32) {
+    return null;
+  }
+  if (typeof node.$ref === "string") {
+    const key = `${file}|${node.$ref}`;
+    if (seen.has(key)) {
+      return null;
+    }
+    seen.add(key);
+    const resolved = resolveRef(node.$ref, file);
+    return resolveVariant(resolved.node, resolved.file, seen, depth + 1);
+  }
+  let properties = {};
+  let propertyFiles = {};
+  let required = [];
+  if (Array.isArray(node.allOf)) {
+    for (const sub of node.allOf) {
+      const resolved = resolveVariant(sub, file, new Set(seen), depth + 1);
+      if (resolved) {
+        properties = { ...resolved.properties, ...properties };
+        propertyFiles = { ...resolved.propertyFiles, ...propertyFiles };
+        required = [...new Set([...required, ...resolved.required])];
+      }
+    }
+  }
+  if (node.properties && typeof node.properties === "object") {
+    properties = { ...properties, ...node.properties };
+    for (const name of Object.keys(node.properties)) {
+      propertyFiles[name] = file;
+    }
+  }
+  if (Array.isArray(node.required)) {
+    const own = node.required.filter((name) => typeof name === "string");
+    required = [...new Set([...required, ...own])];
+  }
+  return Object.keys(properties).length
+    ? { properties, propertyFiles, required, file }
+    : null;
+}
+
+/** Literal scalar `const` of a property node, following $ref. */
+function resolveConstValue(node, file, seen = new Set(), depth = 0) {
+  if (!node || typeof node !== "object" || depth > 32) {
+    return undefined;
+  }
+  if (typeof node.$ref === "string") {
+    const key = `${file}|${node.$ref}`;
+    if (seen.has(key)) {
+      return undefined;
+    }
+    seen.add(key);
+    const resolved = resolveRef(node.$ref, file);
+    return resolveConstValue(resolved.node, resolved.file, seen, depth + 1);
+  }
+  const value = node.const;
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+    ? value
+    : undefined;
+}
+
+/**
+ * A oneOf/anyOf of complete object variants discriminated by a shared
+ * required const property (types/message.json: the error/warning/info
+ * variants each pin `type` and declare their own `required` list). quicktype
+ * collapses such a union into ONE z.object carrying the UNION of the variant
+ * property sets and the INTERSECTION of their required lists, so every
+ * per-variant `required` is dropped: an error message parses without its
+ * mandatory `code`/`severity`. Recover the per-variant lists as
+ * conditional-required rules keyed on the discriminator const and indexed
+ * under the UNION property set (the collapsed object's set), enforced by the
+ * existing conditional superRefine.
+ *
+ * The rules live in their own index (variantUnionIndex), not in
+ * conditionalIndex: a union's own constituent variants are walked as plain
+ * objects and record EMPTY if/then rule lists, and when one variant subsumes
+ * the others its property set EQUALS the union set, so sharing the index
+ * would make every such union self-ambiguous. An empty if/then record is
+ * absence of evidence, not a conflict (per-field descriptors treat
+ * unconstrained same-shape occurrences the same way). Real conflicts still
+ * veto injection: two variant unions resolving to the same property set with
+ * different rules are ambiguous, and a property set claimed by BOTH an
+ * if/then rule list and a variant union injects neither.
+ *
+ * Strictly gated so a union this cannot faithfully represent contributes
+ * nothing: every branch must resolve to an object, share a discriminator that
+ * is required in every branch and carries a DISTINCT scalar const per branch
+ * (fulfillment_destination and the discovery profile union have no such
+ * discriminator and are skipped; the service transport anyOf never requires
+ * its discriminator inside the branches and is skipped).
+ */
+function recordVariantUnionRules(node, file) {
+  if (!node || typeof node !== "object") {
+    return;
+  }
+  const branches = Array.isArray(node.oneOf) ? node.oneOf : node.anyOf;
+  if (
+    !Array.isArray(branches) ||
+    branches.length < 2 ||
+    node.properties !== undefined ||
+    node.allOf !== undefined ||
+    "if" in node ||
+    "then" in node ||
+    "else" in node
+  ) {
+    return;
+  }
+  const variants = [];
+  for (const branch of branches) {
+    const variant = resolveVariant(branch, file);
+    if (!variant) {
+      return;
+    }
+    variants.push(variant);
+  }
+  // Discriminator: present and required in every variant, with a distinct
+  // scalar const per variant. Candidates are tried in sorted order so the
+  // choice is deterministic.
+  const candidateNames = Object.keys(variants[0].properties)
+    .filter((name) =>
+      variants.every(
+        (variant) =>
+          name in variant.properties && variant.required.includes(name)
+      )
+    )
+    .sort();
+  let discriminator = null;
+  let values = null;
+  for (const name of candidateNames) {
+    const consts = variants.map((variant) =>
+      resolveConstValue(
+        variant.properties[name],
+        variant.propertyFiles[name] || variant.file
+      )
+    );
+    if (
+      consts.every((value) => value !== undefined) &&
+      new Set(consts).size === variants.length
+    ) {
+      discriminator = name;
+      values = consts;
+      break;
+    }
+  }
+  if (!discriminator) {
+    return;
+  }
+  const unionNames = new Set();
+  for (const variant of variants) {
+    for (const name of Object.keys(variant.properties)) {
+      unionNames.add(name);
+    }
+  }
+  const rules = [];
+  for (const [index, variant] of variants.entries()) {
+    if (!variant.required.length) {
+      continue;
+    }
+    rules.push({
+      kind: "required",
+      discriminator,
+      values: [values[index]],
+      negated: false,
+      required: [...variant.required].sort(),
+    });
+  }
+  if (
+    !rules.length ||
+    !rules.every((rule) =>
+      rule.required.every((name) => unionNames.has(name))
+    )
+  ) {
+    return;
+  }
+  rules.sort((left, right) =>
+    JSON.stringify(left).localeCompare(JSON.stringify(right))
+  );
+  const setKey = [...unionNames].sort().join(",");
+  const signature = JSON.stringify(rules);
+  if (!variantUnionIndex.has(setKey)) variantUnionIndex.set(setKey, new Map());
+  variantUnionIndex.get(setKey).set(signature, rules);
+}
+
 function walkSchema(node, file, seen = new Set(), depth = 0) {
   if (!node || typeof node !== "object" || depth > 64) {
     return;
@@ -660,6 +857,7 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
     recordMinProperties(node, resolvedObject.properties);
     recordConditionalRules(node, resolvedObject.properties);
   }
+  recordVariantUnionRules(node, file);
   if (node.properties && typeof node.properties === "object") {
     for (const child of Object.values(node.properties)) {
       walkSchema(child, file, new Set(seen), depth + 1);
@@ -756,6 +954,27 @@ for (const [setKey, bySignature] of conditionalIndex) {
   } else {
     ambiguous.push({ setKey, name: "<conditional>", count: bySignature.size });
   }
+}
+
+// Variant-union rules resolve like the other indexes: a single agreed rule
+// list per property set, or nothing. A set claimed by BOTH an if/then rule
+// list and a variant union is a cross-index conflict: neither is injected.
+const resolvedVariantUnions = new Map();
+for (const [setKey, bySignature] of variantUnionIndex) {
+  if (bySignature.size !== 1) {
+    ambiguous.push({
+      setKey,
+      name: "<variant-union>",
+      count: bySignature.size,
+    });
+    continue;
+  }
+  if (resolvedConditionals.has(setKey)) {
+    resolvedConditionals.delete(setKey);
+    ambiguous.push({ setKey, name: "<variant-union/conditional>", count: 2 });
+    continue;
+  }
+  resolvedVariantUnions.set(setKey, [...bySignature.values()][0]);
 }
 
 // --- Shared {id,quantity} line-item reference: contextual split --------------
@@ -1194,7 +1413,10 @@ function handleObjectLiteral(objectLiteral) {
   const resolvedProperties = resolvedIndex.get(setKey);
   const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
   const minPropertiesDescriptor = resolvedMinProperties.get(setKey);
-  const conditionalRules = resolvedConditionals.get(setKey);
+  // If/then rules and variant-union rules render through the same conditional
+  // superRefine; cross-index conflicts were already resolved to neither.
+  const conditionalRules =
+    resolvedConditionals.get(setKey) ?? resolvedVariantUnions.get(setKey);
   if (
     !resolvedProperties &&
     !propertyNamesDescriptor &&
