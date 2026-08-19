@@ -43,6 +43,11 @@ const {
   AdjustmentLineItemSchema,
   EventLineItemSchema,
   ExpectationLineItemSchema,
+  CheckoutResponseSchema,
+  CartResponseSchema,
+  FulfillmentEventSchema,
+  AdjustmentSchema,
+  FulfillmentOptionSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -462,4 +467,59 @@ test("ProductSchema rejects a non-URL url (format: uri via cross-file)", () => {
   assert.ok(
     accepts(ProductSchema, productWithUrl("https://cdn.example/1.png"))
   );
+});
+
+// --- format: date-time must stay an RFC 3339 STRING -------------------------
+// checkout.expires_at, cart.expires_at, fulfillment_event.occurred_at,
+// adjustment.occurred_at and fulfillment_option.*_fulfillment_time are
+// { type: string, format: date-time } in the source schemas. quicktype emits
+// z.coerce.date() for them, which (a) accepts a raw number (epoch), (b)
+// accepts a date-only string, (c) accepts a timezone-less local datetime, and
+// (d) parses to a JS Date so a round-trip re-serializes a changed value.
+
+const ExpiresAtSchema = CheckoutResponseSchema.shape.expires_at;
+const CartExpiresAtSchema = CartResponseSchema.shape.expires_at;
+const OccurredAtSchema = FulfillmentEventSchema.shape.occurred_at;
+const AdjustmentOccurredAtSchema = AdjustmentSchema.shape.occurred_at;
+
+test("checkout expires_at rejects a raw number (spec type is string)", () => {
+  assert.ok(rejects(ExpiresAtSchema, 12345));
+  assert.ok(rejects(CartExpiresAtSchema, 12345));
+});
+
+test("checkout expires_at rejects a date-only string (format: date-time)", () => {
+  assert.ok(rejects(ExpiresAtSchema, "2026-04-08"));
+});
+
+test("checkout expires_at rejects a datetime without a UTC offset", () => {
+  // RFC 3339 date-time requires time-offset ("Z" or +hh:mm / -hh:mm).
+  assert.ok(rejects(ExpiresAtSchema, "2026-04-08T10:00:00"));
+});
+
+test("checkout expires_at accepts RFC 3339 date-times", () => {
+  assert.ok(accepts(ExpiresAtSchema, "2026-04-08T10:00:00Z"));
+  assert.ok(accepts(ExpiresAtSchema, "2026-04-08T10:00:00+02:00"));
+  assert.ok(accepts(ExpiresAtSchema, "2026-04-08T10:00:00.123Z"));
+  assert.ok(accepts(ExpiresAtSchema, undefined)); // stays optional
+});
+
+test("fulfillment/adjustment occurred_at enforce the same string format", () => {
+  assert.ok(rejects(OccurredAtSchema, 12345));
+  assert.ok(rejects(AdjustmentOccurredAtSchema, 12345));
+  assert.ok(accepts(OccurredAtSchema, "2026-04-08T10:00:00Z"));
+  assert.ok(accepts(AdjustmentOccurredAtSchema, "2026-04-08T10:00:00Z"));
+});
+
+test("fulfillment option times enforce the same string format", () => {
+  const Earliest = FulfillmentOptionSchema.shape.earliest_fulfillment_time;
+  const Latest = FulfillmentOptionSchema.shape.latest_fulfillment_time;
+  assert.ok(rejects(Earliest, 12345));
+  assert.ok(rejects(Latest, "2026-04-08"));
+  assert.ok(accepts(Earliest, "2026-04-08T10:00:00Z"));
+  assert.ok(accepts(Latest, "2026-04-09T10:00:00Z"));
+});
+
+test("a date-time field round-trips verbatim (string in, same string out)", () => {
+  const wire = "2026-04-08T10:00:00+02:00";
+  assert.equal(OccurredAtSchema.parse(wire), wire);
 });

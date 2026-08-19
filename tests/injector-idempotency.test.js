@@ -74,3 +74,57 @@ test("running the constraint injector twice leaves the file unchanged", () => {
     "a second pass must not re-apply an existing constraint"
   );
 });
+
+// The date-time conversion is a base-call REPLACEMENT (z.coerce.date() ->
+// z.string().datetime({ offset: true })), not a chained method, so it needs
+// its own idempotency proof: the second pass must recognise the converted
+// base as already constrained.
+test("the date-time conversion applies once and is idempotent", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ucp-injector-dt-"));
+  const schemaDir = path.join(dir, "schemas");
+  fs.mkdirSync(schemaDir);
+  fs.writeFileSync(
+    path.join(schemaDir, "fulfillment_event.json"),
+    JSON.stringify({
+      $id: "https://ucp.dev/schemas/fulfillment_event.json",
+      title: "Fulfillment Event",
+      type: "object",
+      properties: {
+        occurred_at: { type: "string", format: "date-time" },
+        description: { type: "string" },
+      },
+      required: ["occurred_at"],
+    })
+  );
+
+  const target = path.join(dir, "spec_generated.ts");
+  fs.writeFileSync(
+    target,
+    'import * as z from "zod";\n' +
+      "\n" +
+      "export const FulfillmentEventSchema = z.object({\n" +
+      "  occurred_at: z.coerce.date(),\n" +
+      "  description: z.string().optional(),\n" +
+      "});\n"
+  );
+
+  execFileSync("node", [SCRIPT, schemaDir, target], { stdio: "pipe" });
+  const afterFirst = fs.readFileSync(target, "utf8");
+  assert.match(
+    afterFirst,
+    /occurred_at: z\.string\(\)\.datetime\(\{ offset: true \}\)/,
+    "the first pass replaces the coerced Date base with a string datetime"
+  );
+  assert.doesNotMatch(
+    afterFirst,
+    /z\.coerce\.date\(\)/,
+    "the coerced Date base is gone"
+  );
+
+  execFileSync("node", [SCRIPT, schemaDir, target], { stdio: "pipe" });
+  assert.equal(
+    fs.readFileSync(target, "utf8"),
+    afterFirst,
+    "a second pass must not re-apply the conversion"
+  );
+});

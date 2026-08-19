@@ -130,14 +130,20 @@ const CONSTRAINT_KEYS = [
 /**
  * JSON Schema `format` values with a direct zod string refinement.
  *
- * Deliberately partial. `date-time` is absent because quicktype already emits
- * `z.coerce.date()` for it, so the base is not a string. `uri-reference` is
- * absent because a relative reference is not a URL and `.url()` would reject
- * valid values. An unlisted format contributes no constraint rather than a
- * wrong one.
+ * Deliberately partial. `uri-reference` is absent because a relative
+ * reference is not a URL and `.url()` would reject valid values. An unlisted
+ * format contributes no constraint rather than a wrong one.
+ *
+ * `date-time` is special: the spec type is `string` (RFC 3339 date-time), but
+ * quicktype emits `z.coerce.date()` for it, which accepts a raw number and a
+ * date-only string, and parses to a JS `Date` so a round-trip re-serializes a
+ * changed value. When the schema says `format: date-time` and the generated
+ * base is `z.coerce.date()`, the injector REPLACES the base with `z.string()`
+ * and then chains this method, restoring both the wire type and the format.
  */
 const STRING_FORMAT_METHODS = {
   uri: ".url()",
+  "date-time": ".datetime({ offset: true })",
 };
 
 /** Effective value constraints for a schema node, following $ref + allOf. */
@@ -1035,6 +1041,24 @@ function findBaseCall(expression, sourceFile) {
   if (!ts.isPropertyAccessExpression(callee)) {
     return null;
   }
+  // `z.coerce.date()` -- quicktype's rendering of format: date-time. The
+  // callee is one property-access deeper (`z.coerce`.date), so it is matched
+  // before the plain `z.<name>()` shapes below. `start` marks the base call
+  // itself so the date-time conversion can replace it in place.
+  if (
+    ts.isPropertyAccessExpression(callee.expression) &&
+    ts.isIdentifier(callee.expression.expression) &&
+    callee.expression.expression.text === "z" &&
+    callee.expression.name.text === "coerce" &&
+    callee.name.text === "date"
+  ) {
+    return {
+      start: baseCall.getStart(sourceFile),
+      end: baseCall.getEnd(),
+      kind: "date",
+      baseCall,
+    };
+  }
   if (!ts.isIdentifier(callee.expression) || callee.expression.text !== "z") {
     return null;
   }
@@ -1045,7 +1069,12 @@ function findBaseCall(expression, sourceFile) {
   else if (method === "array") kind = "array";
   else if (method === "record") kind = "record";
   else return null;
-  return { end: baseCall.getEnd(), kind, baseCall };
+  return {
+    start: baseCall.getStart(sourceFile),
+    end: baseCall.getEnd(),
+    kind,
+    baseCall,
+  };
 }
 
 /**
@@ -1070,9 +1099,10 @@ function alreadyConstrained(baseCall) {
       "refine",
       "superRefine",
       // Derived so a new entry in STRING_FORMAT_METHODS cannot reintroduce
-      // double injection: ".url()" -> "url".
-      ...Object.values(STRING_FORMAT_METHODS).map((method) =>
-        method.replace(/^\.|\(\)$/g, "")
+      // double injection: ".url()" -> "url", ".datetime({ offset: true })"
+      // -> "datetime" (the identifier, whatever the arguments).
+      ...Object.values(STRING_FORMAT_METHODS).map(
+        (method) => method.match(/^\.([A-Za-z]+)/)[1]
       ),
     ]);
     if (CONSTRAINT_METHODS.has(method)) {
@@ -1196,6 +1226,27 @@ function handleObjectLiteral(objectLiteral) {
     }
     if (alreadyConstrained(base.baseCall)) {
       report.fieldsAlreadyDone += 1;
+      matchedAny = true;
+      continue;
+    }
+    // A `z.coerce.date()` base is only ever touched when the source schema
+    // says the field is a string with format: date-time; the whole base call
+    // is then replaced by `z.string()` and the string methods (including
+    // `.datetime(...)`) are chained onto it. Any other descriptor against a
+    // date base is a drift mismatch and injects nothing.
+    if (base.kind === "date") {
+      const methods =
+        descriptor.format === "date-time"
+          ? methodsFor(descriptor, "string")
+          : null;
+      if (!methods) {
+        report.fieldsSkippedType += 1;
+        continue;
+      }
+      const text = `z.string()${methods.join("")}`;
+      edits.push({ pos: base.start, remove: base.end - base.start, text });
+      report.fieldsInjected += 1;
+      report.injections.push(`${setKey} :: ${name} ${text}`);
       matchedAny = true;
       continue;
     }
