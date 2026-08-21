@@ -310,7 +310,9 @@ function collectContainsGroups(node, file, seen = new Set(), depth = 0) {
   }
   if (Array.isArray(node.allOf)) {
     for (const sub of node.allOf) {
-      groups.push(...collectContainsGroups(sub, file, new Set(seen), depth + 1));
+      groups.push(
+        ...collectContainsGroups(sub, file, new Set(seen), depth + 1)
+      );
     }
   }
   return groups;
@@ -354,10 +356,99 @@ function describeConstraint(propertyNode, file) {
   return Object.keys(descriptor).length ? { descriptor, signature } : null;
 }
 
+/**
+ * Recover the constrained oneOf shape quicktype renders as a scalar union:
+ *   string | non-empty array<string>
+ *
+ * capability.json's `extends` field is the pinned example. Each branch carries
+ * its own value constraints (the scalar string's reverse-domain pattern, the
+ * array branch's minItems, and the array item pattern), but the generic field
+ * injector only sees one generated `z.union(...)` base and cannot attach those
+ * branch-local methods safely. Keep this index separate and deliberately narrow:
+ * exactly one string branch and one array-of-string branch, with no guessing for
+ * richer unions.
+ */
+function describeStringArrayUnionConstraint(
+  propertyNode,
+  file,
+  seen = new Set(),
+  depth = 0
+) {
+  if (!propertyNode || typeof propertyNode !== "object" || depth > 32) {
+    return null;
+  }
+  if (typeof propertyNode.$ref === "string") {
+    const key = `${file}|${propertyNode.$ref}`;
+    if (seen.has(key)) {
+      return null;
+    }
+    seen.add(key);
+    const resolved = resolveRef(propertyNode.$ref, file);
+    return describeStringArrayUnionConstraint(
+      resolved.node,
+      resolved.file,
+      seen,
+      depth + 1
+    );
+  }
+  const branches = Array.isArray(propertyNode.oneOf)
+    ? propertyNode.oneOf
+    : propertyNode.anyOf;
+  if (!Array.isArray(branches) || branches.length !== 2) {
+    return null;
+  }
+  let stringBranch = null;
+  let arrayBranch = null;
+  let arrayItemBranch = null;
+  for (const branch of branches) {
+    const eff = effectiveConstraints(branch, file);
+    const type = Array.isArray(eff.type)
+      ? eff.type.find((entry) => entry !== "null")
+      : eff.type;
+    if (type === "string" && stringBranch === null) {
+      const described = describeConstraint(branch, file);
+      if (!described) return null;
+      stringBranch = described.descriptor;
+      continue;
+    }
+    if (type === "array" && arrayBranch === null) {
+      if (!branch.items || typeof branch.items !== "object") return null;
+      const itemEff = effectiveConstraints(branch.items, file);
+      const itemType = Array.isArray(itemEff.type)
+        ? itemEff.type.find((entry) => entry !== "null")
+        : itemEff.type;
+      if (itemType !== "string") return null;
+      const describedArray = describeConstraint(branch, file);
+      const describedItem = describeConstraint(branch.items, file);
+      if (!describedArray || !describedItem) return null;
+      arrayBranch = describedArray.descriptor;
+      arrayItemBranch = describedItem.descriptor;
+      continue;
+    }
+    return null;
+  }
+  if (!stringBranch || !arrayBranch || !arrayItemBranch) {
+    return null;
+  }
+  const descriptor = {
+    string: stringBranch,
+    array: arrayBranch,
+    item: arrayItemBranch,
+  };
+  const signature = JSON.stringify(descriptor);
+  return { descriptor, signature };
+}
+
 // --- Build the property-set -> property -> constraint index ----------------
 
 // setKey -> Map(propertyName -> Map(signature -> descriptor))
 const constraintIndex = new Map();
+
+// Constrained scalar unions (`string | array<string>`) keyed like field
+// constraints, but rendered by replacing the generated `z.union(...)` call
+// rather than appending one method to a single base constructor.
+// setKey -> Map(propertyName -> Map(signature -> descriptor))
+const stringArrayUnionIndex = new Map();
 
 // Object-level `propertyNames` (a key-name constraint, not a per-field one) for
 // objects that declare it alongside named `properties` -- the extra-allow +
@@ -399,17 +490,30 @@ function recordObject(properties, file, propertyFiles) {
     // inherited into this object via a cross-file `$ref`/`allOf`, in which
     // case its own relative `$ref`s must resolve against that file, not the
     // inheriting object's). Fall back to the object's file when unset.
-    const described = describeConstraint(
+    const propertyFile = (propertyFiles && propertyFiles[name]) || file;
+    const described = describeConstraint(propertyNode, propertyFile);
+    if (described) {
+      if (!byProperty.has(name)) {
+        byProperty.set(name, new Map());
+      }
+      byProperty.get(name).set(described.signature, described.descriptor);
+    }
+    const describedUnion = describeStringArrayUnionConstraint(
       propertyNode,
-      (propertyFiles && propertyFiles[name]) || file
+      propertyFile
     );
-    if (!described) {
-      continue;
+    if (describedUnion) {
+      if (!stringArrayUnionIndex.has(setKey)) {
+        stringArrayUnionIndex.set(setKey, new Map());
+      }
+      const unionByProperty = stringArrayUnionIndex.get(setKey);
+      if (!unionByProperty.has(name)) {
+        unionByProperty.set(name, new Map());
+      }
+      unionByProperty
+        .get(name)
+        .set(describedUnion.signature, describedUnion.descriptor);
     }
-    if (!byProperty.has(name)) {
-      byProperty.set(name, new Map());
-    }
-    byProperty.get(name).set(described.signature, described.descriptor);
   }
 }
 
@@ -817,9 +921,7 @@ function recordVariantUnionRules(node, file) {
   }
   if (
     !rules.length ||
-    !rules.every((rule) =>
-      rule.required.every((name) => unionNames.has(name))
-    )
+    !rules.every((rule) => rule.required.every((name) => unionNames.has(name)))
   ) {
     return;
   }
@@ -921,6 +1023,24 @@ for (const [setKey, byProperty] of constraintIndex) {
   }
 }
 
+// Resolve constrained scalar-union properties using the same ambiguity guard as
+// ordinary field constraints. A coincidental generated object shape reused with
+// a different string|array branch contract must not inherit either contract.
+const resolvedStringArrayUnions = new Map();
+for (const [setKey, byProperty] of stringArrayUnionIndex) {
+  const resolvedProperties = new Map();
+  for (const [name, bySignature] of byProperty) {
+    if (bySignature.size === 1) {
+      resolvedProperties.set(name, [...bySignature.values()][0]);
+    } else {
+      ambiguous.push({ setKey, name, count: bySignature.size });
+    }
+  }
+  if (resolvedProperties.size) {
+    resolvedStringArrayUnions.set(setKey, resolvedProperties);
+  }
+}
+
 // Resolve the object-level propertyNames index to one descriptor per set,
 // dropping any set that carried conflicting patterns (mirrors the scalar
 // ambiguity guard so a coincidental property-set clash never over-restricts).
@@ -930,7 +1050,11 @@ for (const [setKey, bySignature] of propertyNamesIndex) {
   if (bySignature.size === 1) {
     resolvedPropertyNames.set(setKey, [...bySignature.values()][0]);
   } else {
-    ambiguous.push({ setKey, name: "<propertyNames>", count: bySignature.size });
+    ambiguous.push({
+      setKey,
+      name: "<propertyNames>",
+      count: bySignature.size,
+    });
   }
 }
 
@@ -939,7 +1063,11 @@ for (const [setKey, bySignature] of minPropertiesIndex) {
   if (bySignature.size === 1) {
     resolvedMinProperties.set(setKey, [...bySignature.values()][0]);
   } else {
-    ambiguous.push({ setKey, name: "<minProperties>", count: bySignature.size });
+    ambiguous.push({
+      setKey,
+      name: "<minProperties>",
+      count: bySignature.size,
+    });
   }
 }
 
@@ -1210,9 +1338,7 @@ function methodsFor(descriptor, baseKind) {
   } else if (isRecord) {
     if (baseKind !== "record") return null;
     if (descriptor.minProperties !== undefined) {
-      methods.push(
-        renderMinPropertiesRefine(descriptor.minProperties, false)
-      );
+      methods.push(renderMinPropertiesRefine(descriptor.minProperties, false));
     }
     if (descriptor.propertyNamesPattern !== undefined) {
       methods.push(renderRecordKeyPattern(descriptor.propertyNamesPattern));
@@ -1228,6 +1354,111 @@ function methodsFor(descriptor, baseKind) {
       methods.push(renderContainsRefine(descriptor.containsGroups));
   }
   return methods.length ? methods : null;
+}
+
+function renderStringArrayUnion(branchDescriptor, unionCall, sourceFile) {
+  if (
+    !unionCall.arguments.length ||
+    !ts.isArrayLiteralExpression(unionCall.arguments[0])
+  ) {
+    return null;
+  }
+  const elements = unionCall.arguments[0].elements;
+  if (elements.length !== 2) {
+    return null;
+  }
+  const rendered = [];
+  let sawString = false;
+  let sawArray = false;
+  for (const element of elements) {
+    if (!ts.isCallExpression(element)) {
+      return null;
+    }
+    const callee = element.expression;
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      ts.isIdentifier(callee.expression) &&
+      callee.expression.text === "z" &&
+      callee.name.text === "string" &&
+      element.arguments.length === 0
+    ) {
+      if (sawString) return null;
+      const methods = methodsFor(branchDescriptor.string, "string");
+      if (!methods) return null;
+      rendered.push(`z.string()${methods.join("")}`);
+      sawString = true;
+      continue;
+    }
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      ts.isIdentifier(callee.expression) &&
+      callee.expression.text === "z" &&
+      callee.name.text === "array" &&
+      element.arguments.length === 1 &&
+      ts.isCallExpression(element.arguments[0])
+    ) {
+      const item = element.arguments[0];
+      const itemCallee = item.expression;
+      if (
+        !ts.isPropertyAccessExpression(itemCallee) ||
+        !ts.isIdentifier(itemCallee.expression) ||
+        itemCallee.expression.text !== "z" ||
+        itemCallee.name.text !== "string" ||
+        item.arguments.length !== 0 ||
+        sawArray
+      ) {
+        return null;
+      }
+      const itemMethods = methodsFor(branchDescriptor.item, "string");
+      const arrayMethods = methodsFor(branchDescriptor.array, "array");
+      if (!itemMethods || !arrayMethods) return null;
+      rendered.push(
+        `z.array(z.string()${itemMethods.join("")})${arrayMethods.join("")}`
+      );
+      sawArray = true;
+      continue;
+    }
+    return null;
+  }
+  if (!sawString || !sawArray) {
+    return null;
+  }
+  return `z.union([${rendered.join(", ")}])`;
+}
+
+function findUnionCall(expression) {
+  let node = expression;
+  const callStack = [];
+  while (ts.isCallExpression(node)) {
+    callStack.push(node);
+    const callee = node.expression;
+    if (ts.isPropertyAccessExpression(callee)) {
+      node = callee.expression;
+    } else {
+      break;
+    }
+  }
+  const baseCall = callStack[callStack.length - 1];
+  if (!baseCall || !ts.isCallExpression(baseCall)) {
+    return null;
+  }
+  const callee = baseCall.expression;
+  if (
+    !ts.isPropertyAccessExpression(callee) ||
+    !ts.isIdentifier(callee.expression) ||
+    callee.expression.text !== "z" ||
+    callee.name.text !== "union"
+  ) {
+    return null;
+  }
+  const unionText = sourceText.slice(
+    baseCall.getStart(sourceFile),
+    baseCall.getEnd()
+  );
+  if (/\.min\(|\.max\(|\.regex\(|\.refine\(|\.superRefine\(/.test(unionText)) {
+    return { alreadyConstrained: true, baseCall };
+  }
+  return { alreadyConstrained: false, baseCall };
 }
 
 // --- Locate the base zod constructor call in a field expression ------------
@@ -1381,6 +1612,7 @@ const edits = []; // { pos, remove?, text }
 const report = {
   objectsMatched: 0,
   fieldsInjected: 0,
+  unionBranchesInjected: 0,
   propertyNamesInjected: 0,
   minPropertiesInjected: 0,
   conditionalsInjected: 0,
@@ -1411,6 +1643,7 @@ function handleObjectLiteral(objectLiteral) {
   }
   const setKey = [...names].sort().join(",");
   const resolvedProperties = resolvedIndex.get(setKey);
+  const resolvedUnionProperties = resolvedStringArrayUnions.get(setKey);
   const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
   const minPropertiesDescriptor = resolvedMinProperties.get(setKey);
   // If/then rules and variant-union rules render through the same conditional
@@ -1419,6 +1652,7 @@ function handleObjectLiteral(objectLiteral) {
     resolvedConditionals.get(setKey) ?? resolvedVariantUnions.get(setKey);
   if (
     !resolvedProperties &&
+    !resolvedUnionProperties &&
     !propertyNamesDescriptor &&
     !minPropertiesDescriptor &&
     !conditionalRules
@@ -1427,7 +1661,7 @@ function handleObjectLiteral(objectLiteral) {
   }
   let matchedAny = false;
   for (const prop of objectLiteral.properties) {
-    if (!resolvedProperties || !ts.isPropertyAssignment(prop)) {
+    if (!ts.isPropertyAssignment(prop)) {
       continue;
     }
     const name =
@@ -1435,6 +1669,39 @@ function handleObjectLiteral(objectLiteral) {
         ? prop.name.text
         : null;
     if (!name) {
+      continue;
+    }
+    const unionDescriptor = resolvedUnionProperties?.get(name);
+    if (unionDescriptor) {
+      const union = findUnionCall(prop.initializer);
+      if (!union) {
+        report.fieldsSkippedType += 1;
+      } else if (union.alreadyConstrained) {
+        report.fieldsAlreadyDone += 1;
+        matchedAny = true;
+      } else {
+        const text = renderStringArrayUnion(
+          unionDescriptor,
+          union.baseCall,
+          sourceFile
+        );
+        if (!text) {
+          report.fieldsSkippedType += 1;
+        } else {
+          edits.push({
+            pos: union.baseCall.getStart(sourceFile),
+            remove:
+              union.baseCall.getEnd() - union.baseCall.getStart(sourceFile),
+            text,
+          });
+          report.unionBranchesInjected += 1;
+          report.injections.push(`${setKey} :: ${name} ${text}`);
+          matchedAny = true;
+        }
+      }
+      continue;
+    }
+    if (!resolvedProperties) {
       continue;
     }
     const descriptor = resolvedProperties.get(name);
@@ -1570,9 +1837,14 @@ if (sharedQuantitySplitNeeded) {
     "export const LineItemQuantityRefSchema = z.object({"
   );
   const sharedObjectEnd =
-    sharedObjectStart >= 0 ? sourceText.indexOf("\n});", sharedObjectStart) : -1;
+    sharedObjectStart >= 0
+      ? sourceText.indexOf("\n});", sharedObjectStart)
+      : -1;
   if (sharedObjectStart >= 0 && sharedObjectEnd >= 0) {
-    const sharedObjectText = sourceText.slice(sharedObjectStart, sharedObjectEnd);
+    const sharedObjectText = sourceText.slice(
+      sharedObjectStart,
+      sharedObjectEnd
+    );
     const quantityRef = /["']?quantity["']?: z\.number\(\)(?!\.int\(\))/.exec(
       sharedObjectText
     );
@@ -1592,7 +1864,8 @@ if (sharedQuantitySplitNeeded) {
     if (!matched) {
       continue;
     }
-    const standalone = `export const ${name}Schema = z.object({\n` +
+    const standalone =
+      `export const ${name}Schema = z.object({\n` +
       `  id: z.string(),\n` +
       `  quantity: z.number().int().gte(1),\n` +
       `});`;
@@ -1622,6 +1895,7 @@ fs.writeFileSync(targetPath, output);
 process.stdout.write(
   `inject-schema-constraints: ${report.fieldsInjected} field(s) constrained ` +
     `across ${report.objectsMatched} object schema(s); ` +
+    `${report.unionBranchesInjected} string-array union branch constraint(s); ` +
     `${report.propertyNamesInjected} propertyNames key-check(s); ` +
     `${report.minPropertiesInjected} object minProperties check(s); ` +
     `${report.conditionalsInjected} conditional check(s); ` +
