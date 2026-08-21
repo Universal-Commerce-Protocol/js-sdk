@@ -121,7 +121,7 @@ export const CapabilityDiscoverySchema = z.object({
   name: z.string(),
   schema: z.string(),
   spec: z.string(),
-  version: z.string(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type CapabilityDiscovery = z.infer<typeof CapabilityDiscoverySchema>;
 
@@ -783,7 +783,7 @@ export const UcpServiceSchema = z.object({
   mcp: McpSchema.optional(),
   rest: RestSchema.optional(),
   spec: z.string(),
-  version: z.string(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type UcpService = z.infer<typeof UcpServiceSchema>;
 
@@ -1316,7 +1316,7 @@ export type Payment = z.infer<typeof PaymentSchema>;
 export const UcpSchema = z.object({
   capabilities: z.array(CapabilityDiscoverySchema),
   services: z.record(z.string(), UcpServiceSchema),
-  version: z.string(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type Ucp = z.infer<typeof UcpSchema>;
 

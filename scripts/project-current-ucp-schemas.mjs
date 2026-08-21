@@ -707,6 +707,8 @@ function writeCompatibilityDiscoverySchemas() {
     "capability.json": capabilitySchema,
   };
 
+  const version = ucpSchema.$defs.version;
+
   const signingKey = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "Signing Key",
@@ -756,7 +758,7 @@ function writeCompatibilityDiscoverySchemas() {
       name: { type: "string" },
       schema: { type: "string" },
       spec: { type: "string" },
-      version: { type: "string" },
+      version: clone(version),
     },
   };
 
@@ -804,7 +806,7 @@ function writeCompatibilityDiscoverySchemas() {
         },
       },
       spec: { type: "string" },
-      version: { type: "string" },
+      version: clone(version),
     },
   };
 
@@ -858,7 +860,7 @@ function writeCompatibilityDiscoverySchemas() {
             type: "object",
             additionalProperties: { $ref: "ucp_service.json" },
           },
-          version: { type: "string" },
+          version: clone(version),
         },
       },
     },
