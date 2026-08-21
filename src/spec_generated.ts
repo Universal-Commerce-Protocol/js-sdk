@@ -685,14 +685,20 @@ export type FluffySeller = PurpleSeller;
 
 export const PurpleMeasureSchema = z.object({
   unit: z.string(),
-  value: z.number().int(),
+  value: z.number(),
 });
 export type PurpleMeasure = z.infer<typeof PurpleMeasureSchema>;
 export const FluffyMeasureSchema = PurpleMeasureSchema;
 export type FluffyMeasure = PurpleMeasure;
-export const FluffyReferenceSchema = PurpleMeasureSchema;
+export const FluffyReferenceSchema = z.object({
+  unit: z.string(),
+  value: z.number().int(),
+});
 export type FluffyReference = PurpleMeasure;
-export const PurpleReferenceSchema = PurpleMeasureSchema;
+export const PurpleReferenceSchema = z.object({
+  unit: z.string(),
+  value: z.number().int(),
+});
 export type PurpleReference = PurpleMeasure;
 
 export const SearchRequestPaginationSchema = z.object({
