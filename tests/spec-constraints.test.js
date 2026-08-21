@@ -51,6 +51,11 @@ const {
   AdjustmentSchema,
   FulfillmentOptionSchema,
   UcpSchema,
+  CapabilityDiscoverySchema,
+  A2ASchema,
+  EmbeddedSchema,
+  SchemaEndpointSchema,
+  UcpServiceSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -419,6 +424,56 @@ test("UcpSchema enforces the discovery version pattern", () => {
   const discovery = { capabilities: [], services: {} };
   assert.ok(rejects(UcpSchema, { ...discovery, version: "not-a-date" }));
   assert.ok(accepts(UcpSchema, { ...discovery, version: "2026-04-08" }));
+});
+
+test("discovery declarations enforce URI fields", () => {
+  assert.ok(
+    rejects(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "/schemas/checkout.json",
+      spec: "not-a-url",
+      version: "2026-04-08",
+    })
+  );
+  assert.ok(rejects(A2ASchema, { endpoint: "agent.example/a2a" }));
+  assert.ok(rejects(EmbeddedSchema, { schema: "./embedded.json" }));
+  assert.ok(
+    rejects(SchemaEndpointSchema, {
+      endpoint: "merchant.example/ucp",
+      schema: "/openapi.json",
+    })
+  );
+  assert.ok(
+    rejects(UcpServiceSchema, {
+      spec: "specification/overview",
+      version: "2026-04-08",
+    })
+  );
+
+  assert.ok(
+    accepts(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "https://ucp.dev/schemas/shopping/checkout.json",
+      spec: "https://ucp.dev/specification/checkout",
+      version: "2026-04-08",
+    })
+  );
+  assert.ok(accepts(A2ASchema, { endpoint: "https://agent.example/a2a" }));
+  assert.ok(
+    accepts(EmbeddedSchema, { schema: "https://agent.example/embedded.json" })
+  );
+  assert.ok(
+    accepts(SchemaEndpointSchema, {
+      endpoint: "https://merchant.example/ucp",
+      schema: "https://merchant.example/openapi.json",
+    })
+  );
+  assert.ok(
+    accepts(UcpServiceSchema, {
+      spec: "https://ucp.dev/specification/overview",
+      version: "2026-04-08",
+    })
+  );
 });
 
 test("CapabilityResponseSchema enforces the entity version pattern", () => {

@@ -119,25 +119,25 @@ export const CapabilityDiscoverySchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
   extends: z.string().optional(),
   name: z.string(),
-  schema: z.string(),
-  spec: z.string(),
+  schema: z.string().url(),
+  spec: z.string().url(),
   version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type CapabilityDiscovery = z.infer<typeof CapabilityDiscoverySchema>;
 
 export const A2ASchema = z.object({
-  endpoint: z.string(),
+  endpoint: z.string().url(),
 });
 export type A2A = z.infer<typeof A2ASchema>;
 
 export const EmbeddedSchema = z.object({
-  schema: z.string(),
+  schema: z.string().url(),
 });
 export type Embedded = z.infer<typeof EmbeddedSchema>;
 
 export const SchemaEndpointSchema = z.object({
-  endpoint: z.string(),
-  schema: z.string(),
+  endpoint: z.string().url(),
+  schema: z.string().url(),
 });
 export type SchemaEndpoint = z.infer<typeof SchemaEndpointSchema>;
 export const McpSchema = SchemaEndpointSchema;
@@ -782,7 +782,7 @@ export const UcpServiceSchema = z.object({
   embedded: EmbeddedSchema.optional(),
   mcp: McpSchema.optional(),
   rest: RestSchema.optional(),
-  spec: z.string(),
+  spec: z.string().url(),
   version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 export type UcpService = z.infer<typeof UcpServiceSchema>;
