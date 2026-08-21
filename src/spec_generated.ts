@@ -416,7 +416,14 @@ export type Line = z.infer<typeof LineSchema>;
 
 export const CapabilityResponseSchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
-  extends: z.union([z.array(z.string()), z.string()]).optional(),
+  extends: z
+    .union([
+      z
+        .array(z.string().regex(/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/))
+        .min(1),
+      z.string().regex(/^[a-z][a-z0-9]*(?:\.[a-z][a-z0-9_]*)+$/),
+    ])
+    .optional(),
   id: z.string().optional(),
   schema: z.string().url().optional(),
   spec: z.string().url().optional(),

@@ -370,6 +370,50 @@ test("OrderConfirmationSchema rejects a non-URL permalink_url (format: uri)", ()
 // cross-file allOf `$ref`. The injector must resolve that property's own
 // file (ucp.json) so the YYYY-MM-DD pattern survives on derived schemas.
 
+// --- Capability extends: branch-local oneOf constraints --------------------
+// capability.json defines extends as either a reverse-domain capability name or
+// a non-empty array of those names. quicktype renders the oneOf as a plain
+// z.union, so the injector must recover constraints on each union branch.
+
+test("CapabilityResponseSchema rejects an empty extends array", () => {
+  assert.ok(
+    rejects(CapabilityResponseSchema, {
+      version: "2026-04-08",
+      extends: [],
+    })
+  );
+});
+
+test("CapabilityResponseSchema rejects invalid extends names", () => {
+  assert.ok(
+    rejects(CapabilityResponseSchema, {
+      version: "2026-04-08",
+      extends: "bad name",
+    })
+  );
+  assert.ok(
+    rejects(CapabilityResponseSchema, {
+      version: "2026-04-08",
+      extends: ["com.example.good", "BadName"],
+    })
+  );
+});
+
+test("CapabilityResponseSchema accepts valid extends names", () => {
+  assert.ok(
+    accepts(CapabilityResponseSchema, {
+      version: "2026-04-08",
+      extends: "dev.ucp.checkout",
+    })
+  );
+  assert.ok(
+    accepts(CapabilityResponseSchema, {
+      version: "2026-04-08",
+      extends: ["dev.ucp.checkout", "com.example_capability.v1"],
+    })
+  );
+});
+
 test("CapabilityResponseSchema enforces the entity version pattern", () => {
   assert.ok(
     rejects(CapabilityResponseSchema, { version: "not-a-date", id: "cap" })
