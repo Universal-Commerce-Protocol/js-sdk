@@ -50,6 +50,7 @@ const {
   FulfillmentEventSchema,
   AdjustmentSchema,
   FulfillmentOptionSchema,
+  UcpSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -412,6 +413,12 @@ test("CapabilityResponseSchema accepts valid extends names", () => {
       extends: ["dev.ucp.checkout", "com.example_capability.v1"],
     })
   );
+});
+
+test("UcpSchema enforces the discovery version pattern", () => {
+  const discovery = { capabilities: [], services: {} };
+  assert.ok(rejects(UcpSchema, { ...discovery, version: "not-a-date" }));
+  assert.ok(accepts(UcpSchema, { ...discovery, version: "2026-04-08" }));
 });
 
 test("CapabilityResponseSchema enforces the entity version pattern", () => {
