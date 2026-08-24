@@ -708,6 +708,8 @@ function writeCompatibilityDiscoverySchemas() {
   };
 
   const version = ucpSchema.$defs.version;
+  const entityProperties = ucpSchema.$defs.entity.properties;
+  const serviceEndpoint = serviceSchema.$defs.base.allOf[1].properties.endpoint;
 
   const signingKey = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -756,8 +758,8 @@ function writeCompatibilityDiscoverySchemas() {
       config: { type: "object", additionalProperties: true },
       extends: { type: "string" },
       name: { type: "string" },
-      schema: { type: "string" },
-      spec: { type: "string" },
+      schema: clone(entityProperties.schema),
+      spec: clone(entityProperties.spec),
       version: clone(version),
     },
   };
@@ -782,30 +784,30 @@ function writeCompatibilityDiscoverySchemas() {
       a2a: {
         type: "object",
         required: ["endpoint"],
-        properties: { endpoint: { type: "string" } },
+        properties: { endpoint: clone(serviceEndpoint) },
       },
       embedded: {
         type: "object",
         required: ["schema"],
-        properties: { schema: { type: "string" } },
+        properties: { schema: clone(entityProperties.schema) },
       },
       mcp: {
         type: "object",
         required: ["endpoint", "schema"],
         properties: {
-          endpoint: { type: "string" },
-          schema: { type: "string" },
+          endpoint: clone(serviceEndpoint),
+          schema: clone(entityProperties.schema),
         },
       },
       rest: {
         type: "object",
         required: ["endpoint", "schema"],
         properties: {
-          endpoint: { type: "string" },
-          schema: { type: "string" },
+          endpoint: clone(serviceEndpoint),
+          schema: clone(entityProperties.schema),
         },
       },
-      spec: { type: "string" },
+      spec: clone(entityProperties.spec),
       version: clone(version),
     },
   };
