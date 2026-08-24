@@ -444,6 +444,13 @@ function describeStringArrayUnionConstraint(
 // setKey -> Map(propertyName -> Map(signature -> descriptor))
 const constraintIndex = new Map();
 
+// Scalar number kinds are also indexed even when they carry no value constraint.
+// The generic constraint index deliberately omits an unconstrained `number`, but
+// contextual splits must be able to distinguish it from `integer` when quicktype
+// merges two same-shape objects.
+// setKey -> Map(propertyName -> Set("number" | "integer"))
+const scalarTypeIndex = new Map();
+
 // Constrained scalar unions (`string | array<string>`) keyed like field
 // constraints, but rendered by replacing the generated `z.union(...)` call
 // rather than appending one method to a single base constructor.
@@ -484,13 +491,27 @@ function recordObject(properties, file, propertyFiles) {
   if (!constraintIndex.has(setKey)) {
     constraintIndex.set(setKey, new Map());
   }
+  if (!scalarTypeIndex.has(setKey)) {
+    scalarTypeIndex.set(setKey, new Map());
+  }
   const byProperty = constraintIndex.get(setKey);
+  const scalarTypesByProperty = scalarTypeIndex.get(setKey);
   for (const [name, propertyNode] of Object.entries(properties)) {
     // Each property carries the file it was authored in (it may have been
     // inherited into this object via a cross-file `$ref`/`allOf`, in which
     // case its own relative `$ref`s must resolve against that file, not the
     // inheriting object's). Fall back to the object's file when unset.
     const propertyFile = (propertyFiles && propertyFiles[name]) || file;
+    const effective = effectiveConstraints(propertyNode, propertyFile);
+    const scalarType = Array.isArray(effective.type)
+      ? effective.type.find((entry) => entry !== "null")
+      : effective.type;
+    if (scalarType === "number" || scalarType === "integer") {
+      if (!scalarTypesByProperty.has(name)) {
+        scalarTypesByProperty.set(name, new Set());
+      }
+      scalarTypesByProperty.get(name).add(scalarType);
+    }
     const described = describeConstraint(propertyNode, propertyFile);
     if (described) {
       if (!byProperty.has(name)) {
@@ -1133,6 +1154,24 @@ const sharedQuantitySplitNeeded = (() => {
   );
 })();
 
+// --- Shared {unit,value} unit-price measure/reference: contextual split ------
+//
+// A catalog unit price declares two same-shape objects: `measure.value` is a
+// JSON Schema `number`, while `reference.value` is an `integer`. quicktype
+// merges both (and duplicate projected occurrences) into one shared measure
+// object, so the generic ambiguity guard cannot choose whether `.int()` belongs
+// on `value`. Keep the number-shaped measure on `z.number()` and split the two
+// generated reference aliases into standalone integer-valued objects.
+//
+// Trigger only when the source schemas themselves contain both numeric kinds
+// for `value` under the exact {unit,value} shape. Names merely identify the
+// quicktype aliases to repair after that source-evidence gate has passed.
+const REFERENCE_SPLIT_TARGETS = ["FluffyReference", "PurpleReference"];
+const sharedMeasureSplitNeeded = (() => {
+  const valueTypes = scalarTypeIndex.get("unit,value")?.get("value");
+  return valueTypes?.has("number") && valueTypes.has("integer");
+})();
+
 // --- Zod method rendering --------------------------------------------------
 
 function toRegexLiteral(pattern) {
@@ -1617,6 +1656,7 @@ const report = {
   minPropertiesInjected: 0,
   conditionalsInjected: 0,
   sharedQuantityInjected: 0,
+  sharedMeasureInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -1702,6 +1742,17 @@ function handleObjectLiteral(objectLiteral) {
       continue;
     }
     if (!resolvedProperties) {
+      continue;
+    }
+    // The {unit,value} number/integer conflict is resolved by the contextual
+    // split below. Do not queue the generic `.int()` edit on the shared object
+    // in the same pass, because contextual edits are computed from the original
+    // source text and cannot observe another pending edit.
+    if (
+      sharedMeasureSplitNeeded &&
+      setKey === "unit,value" &&
+      name === "value"
+    ) {
       continue;
     }
     const descriptor = resolvedProperties.get(name);
@@ -1878,6 +1929,58 @@ if (sharedQuantitySplitNeeded) {
   }
 }
 
+// Apply the contextual {unit,value} split. The shared measure object may arrive
+// as either unconstrained `z.number()` or incorrectly constrained
+// `z.number().int()` depending on traversal order; normalize it to the source
+// `number`, then replace reference aliases with integer-valued standalone
+// objects. A second injector pass is a no-op because neither pattern remains.
+if (sharedMeasureSplitNeeded) {
+  const sharedObjectStart = sourceText.indexOf(
+    "export const PurpleMeasureSchema = z.object({"
+  );
+  const sharedObjectEnd =
+    sharedObjectStart >= 0
+      ? sourceText.indexOf("\n});", sharedObjectStart)
+      : -1;
+  if (sharedObjectStart >= 0 && sharedObjectEnd >= 0) {
+    const sharedObjectText = sourceText.slice(
+      sharedObjectStart,
+      sharedObjectEnd
+    );
+    const integerValue = /["']?value["']?: z\.number\(\)\.int\(\)/.exec(
+      sharedObjectText
+    );
+    if (integerValue) {
+      edits.push({
+        pos: sharedObjectStart + integerValue.index,
+        remove: integerValue[0].length,
+        text: integerValue[0].replace(".int()", ""),
+      });
+      report.sharedMeasureInjected += 1;
+    }
+  }
+  for (const name of REFERENCE_SPLIT_TARGETS) {
+    const aliasRef = new RegExp(
+      `export const ${name}Schema = PurpleMeasureSchema;`
+    );
+    const matched = aliasRef.exec(sourceText);
+    if (!matched) {
+      continue;
+    }
+    const standalone =
+      `export const ${name}Schema = z.object({\n` +
+      `  unit: z.string(),\n` +
+      `  value: z.number().int(),\n` +
+      `});`;
+    edits.push({
+      pos: matched.index,
+      remove: matched[0].length,
+      text: standalone,
+    });
+    report.sharedMeasureInjected += 1;
+  }
+}
+
 // Apply edits back-to-front so positions stay valid.
 edits.sort((a, b) => b.pos - a.pos);
 let output = sourceText;
@@ -1900,6 +2003,7 @@ process.stdout.write(
     `${report.minPropertiesInjected} object minProperties check(s); ` +
     `${report.conditionalsInjected} conditional check(s); ` +
     `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
+    `${report.sharedMeasureInjected} shared-measure split edit(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );

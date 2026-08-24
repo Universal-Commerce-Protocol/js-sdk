@@ -50,6 +50,7 @@ const {
   FulfillmentEventSchema,
   AdjustmentSchema,
   FulfillmentOptionSchema,
+  PurpleUnitPriceSchema,
   UcpSchema,
   CapabilityDiscoverySchema,
   A2ASchema,
@@ -136,6 +137,28 @@ test("ExpectationLineItemSchema rejects a fractional quantity (type: integer)", 
 
 test("ExpectationLineItemSchema accepts a positive integer quantity", () => {
   assert.ok(accepts(ExpectationLineItemSchema, { id: "li_1", quantity: 1 }));
+});
+
+// --- Unit price measure/reference: contextual split -------------------------
+// Both objects have {unit,value}, but the pinned schema declares measure.value
+// as `number` and reference.value as `integer`. The generated schemas must not
+// let quicktype's shared-object merge apply the integer rule to both contexts.
+
+const unitPrice = (measureValue, referenceValue) => ({
+  amount: 125,
+  currency: "USD",
+  measure: { unit: "kg", value: measureValue },
+  reference: { unit: "kg", value: referenceValue },
+});
+
+test("unit price measure accepts fractional and integer values", () => {
+  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(0.5, 100)));
+  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(1, 100)));
+});
+
+test("unit price reference requires an integer value", () => {
+  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(0.5, 0.5)));
+  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(0.5, 100)));
 });
 
 // --- Projected request constraints -----------------------------------------
