@@ -248,6 +248,8 @@ export const TotalResponseSchema = z
         values: ["discount", "items_discount"],
         negated: false,
         required: [],
+        field: null,
+        format: null,
         target: "amount",
         minimum: null,
         maximum: null,
@@ -260,6 +262,8 @@ export const TotalResponseSchema = z
         values: ["subtotal", "fulfillment", "tax", "fee"],
         negated: false,
         required: [],
+        field: null,
+        format: null,
         target: "amount",
         minimum: 0,
         maximum: null,
@@ -282,6 +286,23 @@ export const TotalResponseSchema = z
               path: [field],
               message: "Field is required by a conditional constraint",
             });
+        }
+        continue;
+      }
+      if (rule.kind === "format") {
+        const field = rule.field;
+        const fieldValue = field === null ? undefined : record[field];
+        if (rule.format === "uri" && typeof fieldValue === "string") {
+          try {
+            new URL(fieldValue);
+          } catch {
+            if (field !== null)
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [field],
+                message: "Value must be a valid URI",
+              });
+          }
         }
         continue;
       }
@@ -330,18 +351,8 @@ export const CheckoutResponseMessageSchema = z
         values: ["error"],
         negated: false,
         required: ["code", "content", "severity", "type"],
-        target: null,
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-      {
-        kind: "required",
-        discriminator: "type",
-        values: ["info"],
-        negated: false,
-        required: ["content", "type"],
+        field: null,
+        format: null,
         target: null,
         minimum: null,
         maximum: null,
@@ -354,6 +365,50 @@ export const CheckoutResponseMessageSchema = z
         values: ["warning"],
         negated: false,
         required: ["code", "content", "type"],
+        field: null,
+        format: null,
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+      {
+        kind: "required",
+        discriminator: "type",
+        values: ["info"],
+        negated: false,
+        required: ["content", "type"],
+        field: null,
+        format: null,
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+      {
+        kind: "format",
+        discriminator: "type",
+        values: ["warning"],
+        negated: false,
+        required: [],
+        field: "image_url",
+        format: "uri",
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+      {
+        kind: "format",
+        discriminator: "type",
+        values: ["warning"],
+        negated: false,
+        required: [],
+        field: "url",
+        format: "uri",
         target: null,
         minimum: null,
         maximum: null,
@@ -376,6 +431,23 @@ export const CheckoutResponseMessageSchema = z
               path: [field],
               message: "Field is required by a conditional constraint",
             });
+        }
+        continue;
+      }
+      if (rule.kind === "format") {
+        const field = rule.field;
+        const fieldValue = field === null ? undefined : record[field];
+        if (rule.format === "uri" && typeof fieldValue === "string") {
+          try {
+            new URL(fieldValue);
+          } catch {
+            if (field !== null)
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [field],
+                message: "Value must be a valid URI",
+              });
+          }
         }
         continue;
       }
@@ -723,6 +795,8 @@ export const SearchResponsePaginationSchema = z
         values: [true],
         negated: false,
         required: ["cursor"],
+        field: null,
+        format: null,
         target: null,
         minimum: null,
         maximum: null,
@@ -745,6 +819,23 @@ export const SearchResponsePaginationSchema = z
               path: [field],
               message: "Field is required by a conditional constraint",
             });
+        }
+        continue;
+      }
+      if (rule.kind === "format") {
+        const field = rule.field;
+        const fieldValue = field === null ? undefined : record[field];
+        if (rule.format === "uri" && typeof fieldValue === "string") {
+          try {
+            new URL(fieldValue);
+          } catch {
+            if (field !== null)
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [field],
+                message: "Value must be a valid URI",
+              });
+          }
         }
         continue;
       }
@@ -865,6 +956,8 @@ export const TotalsResponseSchema = z
         ],
         negated: true,
         required: ["display_text"],
+        field: null,
+        format: null,
         target: null,
         minimum: null,
         maximum: null,
@@ -887,6 +980,23 @@ export const TotalsResponseSchema = z
               path: [field],
               message: "Field is required by a conditional constraint",
             });
+        }
+        continue;
+      }
+      if (rule.kind === "format") {
+        const field = rule.field;
+        const fieldValue = field === null ? undefined : record[field];
+        if (rule.format === "uri" && typeof fieldValue === "string") {
+          try {
+            new URL(fieldValue);
+          } catch {
+            if (field !== null)
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [field],
+                message: "Value must be a valid URI",
+              });
+          }
         }
         continue;
       }
