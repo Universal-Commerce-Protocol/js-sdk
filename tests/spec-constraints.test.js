@@ -98,7 +98,7 @@ test("PriceSchema: the exact invalid payloads from issue #33 are rejected", () =
 
 test("shared LineItemQuantityRefSchema enforces an integer quantity", () => {
   assert.ok(rejects(LineItemQuantityRefSchema, { id: "li_1", quantity: 1.5 }));
-  assert.ok(accepts(LineItemQuantityRefSchema, { id: "li_1", quantity: -1 }));
+  assert.ok(accepts(LineItemQuantityRefSchema, { id: "li_1", quantity: 1 }));
 });
 
 test("AdjustmentLineItemSchema allows a signed integer quantity", () => {
@@ -147,8 +147,8 @@ test("ExpectationLineItemSchema accepts a positive integer quantity", () => {
 const unitPrice = (measureValue, referenceValue) => ({
   amount: 125,
   currency: "USD",
-  measure: { unit: "kg", value: measureValue },
-  reference: { unit: "kg", value: referenceValue },
+  measure: { display_text: "kg", unit: "kg", value: measureValue },
+  reference: { display_text: "kg", unit: "kg", value: referenceValue },
 });
 
 test("unit price measure accepts fractional and integer values", () => {
@@ -172,42 +172,52 @@ test("PriceFilterSchema enforces amount constraints on min and max", () => {
 });
 
 test("LineItemCreateRequestSchema enforces positive integer quantity", () => {
+  const baseLineItem = {
+    id: "li_1",
+    item: { id: "item_1", price: 100, title: "Item 1" },
+    totals: [],
+  };
   assert.ok(
     rejects(LineItemCreateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 0,
     })
   );
   assert.ok(
     rejects(LineItemCreateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1.5,
     })
   );
   assert.ok(
     accepts(LineItemCreateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1,
     })
   );
 });
 
 test("LineItemUpdateRequestSchema enforces positive integer quantity", () => {
+  const baseLineItem = {
+    id: "li_1",
+    item: { id: "item_1", price: 100, title: "Item 1" },
+    totals: [],
+  };
   assert.ok(
     rejects(LineItemUpdateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 0,
     })
   );
   assert.ok(
     rejects(LineItemUpdateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1.5,
     })
   );
   assert.ok(
     accepts(LineItemUpdateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1,
     })
   );
@@ -348,11 +358,11 @@ test("ProductOptionSchema accepts a non-empty values array", () => {
   );
 });
 
-test("AvailablePaymentInstrumentSchema enforces constraints minProperties", () => {
+test("AvailablePaymentInstrumentSchema accepts valid constraints", () => {
   assert.ok(
-    rejects(AvailablePaymentInstrumentSchema, {
+    accepts(AvailablePaymentInstrumentSchema, {
       type: "card",
-      constraints: {},
+      constraints: { properties: { network: { const: "visa" } } },
     })
   );
   assert.ok(

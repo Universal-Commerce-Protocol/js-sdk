@@ -46,6 +46,8 @@ const canonicalNames = new Map([
   ["ItemUpdateRequest", "ItemReference"],
   ["LineItemClass", "LineItemUpdateRequest"],
   ["LineItemElement", "LineItemCreateRequest"],
+  ["LineItemCreateRequest", "LineItem"],
+  ["LineItemUpdateRequest", "LineItem"],
   ["LineItemItem", "ItemReference"],
   ["LinkElement", "Link"],
   ["Mcp", "SchemaEndpoint"],
@@ -56,10 +58,13 @@ const canonicalNames = new Map([
   ["PaymentCreateRequest", "PaymentSelection"],
   ["PaymentUpdateRequest", "PaymentSelection"],
   ["PurpleConsent", "Consent"],
+  ["PurpleUnitPrice", "UnitPrice"],
   ["Rest", "SchemaEndpoint"],
   ["TentacledConsent", "Consent"],
   ["TokenCredentialCreateRequest", "TokenCredentialRequest"],
   ["TokenCredentialUpdateRequest", "TokenCredentialRequest"],
+  ["TotalResponse", "CheckoutResponseTotal"],
+  ["TotalsResponse", "CheckoutResponseTotal"],
   ["UcpCheckoutResponse", "UcpResponse"],
   ["UcpOrderResponse", "UcpResponse"],
 ]);
@@ -142,11 +147,16 @@ for (const names of initialGroups.values()) {
 // Pass 3: Resolve aliases in initializers
 for (const block of schemaBlocks.values()) {
   let resolvedInitializer = block.normalizedInitializer;
-  const sortedAliases = Array.from(aliasMap.keys()).sort((a, b) => b.length - a.length);
+  const sortedAliases = Array.from(aliasMap.keys()).sort(
+    (a, b) => b.length - a.length
+  );
   for (const alias of sortedAliases) {
     const canonical = aliasMap.get(alias);
     const regex = new RegExp(`\\b${alias}Schema\\b`, "g");
-    resolvedInitializer = resolvedInitializer.replace(regex, `${canonical}Schema`);
+    resolvedInitializer = resolvedInitializer.replace(
+      regex,
+      `${canonical}Schema`
+    );
   }
   block.resolvedInitializer = resolvedInitializer;
 }
@@ -228,6 +238,25 @@ for (const replacement of replacements) {
 // Post-processing renames
 outputText = outputText
   .replace(/\bPaymentClassSchema\b/g, "PaymentSplitPaymentsSchema")
-  .replace(/\bPaymentClass\b/g, "PaymentSplitPayments");
+  .replace(/\bPaymentClass\b/g, "PaymentSplitPayments")
+  .replace(
+    /export const ConstraintExpressionSchema = z\.object\(\{([\s\S]*?)\}\);/g,
+    "export const ConstraintExpressionSchema = z.object({$1}).passthrough();"
+  );
+
+// Compatibility exports for schemas referenced across SDK versions and tests
+const requiredCompatibilityExports = [
+  { alias: "TotalResponse", target: "LineItemTotal" },
+  { alias: "TotalsResponse", target: "CheckoutResponseTotal" },
+  { alias: "LineItemCreateRequest", target: "LineItem" },
+  { alias: "LineItemUpdateRequest", target: "LineItem" },
+  { alias: "PurpleUnitPrice", target: "UnitPrice" },
+];
+
+for (const { alias, target } of requiredCompatibilityExports) {
+  if (!outputText.includes(`export const ${alias}Schema`)) {
+    outputText += `\nexport const ${alias}Schema = ${target}Schema;\nexport type ${alias} = ${target};\n`;
+  }
+}
 
 fs.writeFileSync(destinationPath, outputText);

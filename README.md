@@ -35,7 +35,8 @@ Each version of the JavaScript SDK is generated against a specific version of th
 
 | SDK Version | UCP Schema Version |
 | ----------- | ------------------ |
-| **`0.4.x`** | **`2026-04-08`**   |
+| **`0.5.x`** | **`2026-08-25`**   |
+| `0.4.x`     | `2026-04-08`       |
 | `0.1.1`     | `2026-01-23`       |
 | `0.1.0`     | `2026-01-11`       |
 
@@ -91,19 +92,16 @@ This project uses `npm` for package management and `typescript` for building.
 The models are automatically generated from the JSON schemas in the
 [UCP Specification](https://ucp.dev).
 
-To regenerate the models, you first need a local copy of the
-[UCP specification](https://github.com/Universal-Commerce-Protocol/ucp). If you
-don't have one, you can clone it via:
+To regenerate the models against a specific release version:
 
 ```bash
-git clone https://github.com/Universal-Commerce-Protocol/ucp.git
+npm run generate -- 2026-08-25
 ```
 
-Then, run `npm run generate` pointing to the root of the cloned repository,
-e.g.:
+Alternatively, you can point to a local directory containing the UCP repository or schemas:
 
 ```bash
-npm run generate -- ucp
+npm run generate -- /path/to/ucp
 ```
 
 ### Building

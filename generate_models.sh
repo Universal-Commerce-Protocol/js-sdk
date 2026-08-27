@@ -16,15 +16,30 @@
 set -euo pipefail
 
 if [[ -z "${1:-}" ]]; then
-  echo "Error: schema directory path is required."
-  echo "Usage: $0 <spec_dir_or_ucp_repo_root>"
+  echo "Error: schema directory path or UCP release version is required."
+  echo "Usage: $0 <spec_dir_or_ucp_repo_root_or_version>"
   echo "Examples:"
-  echo "  npm run generate -- /path/to/legacy-ucp/spec"
-  echo "  npm run generate -- /path/to/legacy-ucp"
+  echo "  ./generate_models.sh /path/to/ucp"
+  echo "  ./generate_models.sh 2026-08-25"
   exit 1
 fi
 
-INPUT_DIR="${1%/}"
+INPUT_ARG="${1%/}"
+CLONED_DIR=""
+
+if [[ -d "$INPUT_ARG" ]]; then
+  INPUT_DIR="$INPUT_ARG"
+else
+  VERSION="$INPUT_ARG"
+  BRANCH="$VERSION"
+  if [[ "$VERSION" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+    BRANCH="release/$VERSION"
+  fi
+  echo "Cloning UCP version $VERSION (branch: $BRANCH)..."
+  CLONED_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ucp-repo.XXXXXX")"
+  git clone --depth 1 --branch "$BRANCH" https://github.com/Universal-Commerce-Protocol/ucp.git "$CLONED_DIR"
+  INPUT_DIR="$CLONED_DIR"
+fi
 
 if [[ -d "$INPUT_DIR/schemas/shopping" ]]; then
   SPEC_DIR="$INPUT_DIR"
@@ -56,6 +71,9 @@ cleanup() {
   if [[ -n "$PROJECTED_SPEC_DIR" ]]; then
     rm -rf "$PROJECTED_SPEC_DIR"
   fi
+  if [[ -n "$CLONED_DIR" ]]; then
+    rm -rf "$CLONED_DIR"
+  fi
 }
 trap cleanup EXIT
 
@@ -75,13 +93,7 @@ QUICKTYPE_ARGS=(
   --src "$SPEC_DIR/schemas/shopping/checkout.complete_req.json"
   --src "$SPEC_DIR/schemas/shopping/checkout_resp.json"
   --src "$SPEC_DIR/schemas/shopping/order.json"
-  --src "$SPEC_DIR/schemas/shopping/payment.create_req.json"
-  --src "$SPEC_DIR/schemas/shopping/payment.update_req.json"
-  --src "$SPEC_DIR/schemas/shopping/payment.complete_req.json"
   --src "$SPEC_DIR/schemas/shopping/payment_data.json"
-  --src "$SPEC_DIR/schemas/shopping/payment_resp.json"
-  --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/complete_request_with_ap2"
-  --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/checkout_response_with_ap2"
   --src "$SPEC_DIR/schemas/shopping/buyer_consent.create_req.json#/\$defs/checkout"
   --src "$SPEC_DIR/schemas/shopping/buyer_consent.update_req.json#/\$defs/checkout"
   --src "$SPEC_DIR/schemas/shopping/buyer_consent_resp.json#/\$defs/checkout"
@@ -103,15 +115,80 @@ QUICKTYPE_ARGS=(
   --src "$SPEC_DIR/schemas/shopping/catalog_lookup.json#/\$defs/get_product_response"
   --src "$SPEC_DIR/schemas/shopping/catalog_search.json#/\$defs/search_request"
   --src "$SPEC_DIR/schemas/shopping/catalog_search.json#/\$defs/search_response"
-
-  -o "$TMP_OUTPUT"
 )
+
+if [[ -f "$SPEC_DIR/schemas/shopping/payment.create_req.json" ]]; then
+  QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/shopping/payment.create_req.json"
+    --src "$SPEC_DIR/schemas/shopping/payment.update_req.json"
+    --src "$SPEC_DIR/schemas/shopping/payment.complete_req.json"
+    --src "$SPEC_DIR/schemas/shopping/payment_resp.json"
+  )
+fi
+
+if [[ -f "$SPEC_DIR/schemas/shopping/permalink.json" ]]; then
+  QUICKTYPE_ARGS+=(--src "$SPEC_DIR/schemas/shopping/permalink.json")
+fi
+
+if [[ -f "$SPEC_DIR/schemas/shopping/ap2_mandate.json" ]]; then
+  QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/complete_request_with_ap2"
+    --src "$SPEC_DIR/schemas/shopping/ap2_mandate.json#/\$defs/checkout_response_with_ap2"
+  )
+fi
+
+if [[ -d "$SPEC_DIR/schemas/common" ]]; then
+  [[ -f "$SPEC_DIR/schemas/common/location_lookup.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/location_lookup.json#/\$defs/lookup_request"
+    --src "$SPEC_DIR/schemas/common/location_lookup.json#/\$defs/lookup_response"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/location_search.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/search_request"
+    --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/search_response"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/identity_linking.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/identity_linking.json"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/loyalty.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/loyalty.json"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/payment_terms.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/payment_terms.json"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/payment_authentication.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/payment_authentication.json"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/payment_split_payments.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/payment_split_payments.json#/\$defs/instrument_group"
+    --src "$SPEC_DIR/schemas/common/payment_split_payments.json#/\$defs/payment_instrument"
+    --src "$SPEC_DIR/schemas/common/payment_split_payments.json#/\$defs/checkout"
+  )
+  [[ -f "$SPEC_DIR/schemas/common/payment_ap2_mandate.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/payment_ap2_mandate.json#/\$defs/merchant_authorization"
+    --src "$SPEC_DIR/schemas/common/payment_ap2_mandate.json#/\$defs/checkout_mandate"
+    --src "$SPEC_DIR/schemas/common/payment_ap2_mandate.json#/\$defs/error_code"
+  )
+fi
+
+if [[ -d "$SPEC_DIR/schemas/transports" ]]; then
+  QUICKTYPE_ARGS+=(--src "$SPEC_DIR"/schemas/transports/*.json)
+fi
+
+if [[ -f "$SPEC_DIR/schemas/profile.json" ]]; then
+  QUICKTYPE_ARGS+=(--src "$SPEC_DIR/schemas/profile.json")
+fi
+
+QUICKTYPE_ARGS+=(-o "$TMP_OUTPUT")
 
 if [[ "$SCHEMA_LAYOUT" == "legacy" ]]; then
   QUICKTYPE_ARGS+=(--src "$SPEC_DIR"/schemas/shopping/types/*.json)
 fi
 
-npx quicktype "${QUICKTYPE_ARGS[@]}"
+if [[ -x "./node_modules/.bin/quicktype" ]]; then
+  ./node_modules/.bin/quicktype "${QUICKTYPE_ARGS[@]}"
+else
+  npx quicktype "${QUICKTYPE_ARGS[@]}"
+fi
 
 node scripts/normalize-generated-schemas.mjs "$TMP_OUTPUT" src/spec_generated.ts
 
