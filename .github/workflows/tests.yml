@@ -33,6 +33,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Install Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -46,8 +48,8 @@ jobs:
         run: npm test
 
   # Job 2: assert the committed models equal a fresh regeneration from the
-  # pinned UCP spec release the 0.4.x line targets (README compatibility table:
-  # 0.4.x -> 2026-04-08). Catches both a broken generation pipeline (an injector
+  # pinned UCP spec release the 0.5.x line targets (README compatibility table:
+  # 0.5.x -> 2026-08-25). Catches both a broken generation pipeline (an injector
   # regressed but the committed models were not updated) and a forgotten
   # regeneration (committed models stale versus the pinned spec). Does not
   # auto-commit: the committed-artifact flow stays the release path (the
@@ -59,13 +61,16 @@ jobs:
     steps:
       - name: Checkout js-sdk
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
-      - name: Checkout the pinned UCP spec (release/2026-04-08)
+      - name: Checkout the pinned UCP spec (release/2026-08-25)
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           repository: Universal-Commerce-Protocol/ucp
-          ref: release/2026-04-08
+          ref: release/2026-08-25
           path: .ucp-spec
+          persist-credentials: false
 
       - name: Install Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -85,7 +90,7 @@ jobs:
         run: npm ci
 
       # generate_models.sh auto-detects the source/ layout that
-      # release/2026-04-08 ships and writes src/spec_generated.ts in place.
+      # release/2026-08-25 ships and writes src/spec_generated.ts in place.
       - name: Regenerate models from the pinned spec
         run: ./generate_models.sh .ucp-spec
 
@@ -107,7 +112,7 @@ jobs:
       - name: Fail if committed models differ from regeneration
         run: |
           if ! git diff --exit-code -- src/spec_generated.ts; then
-            echo "::error::src/spec_generated.ts is out of sync with the pinned UCP spec (release/2026-04-08). Regenerate with 'npm run generate -- /path/to/ucp' (ucp checked out at release/2026-04-08), run pre-commit to format, and commit src/spec_generated.ts."
+            echo "::error::src/spec_generated.ts is out of sync with the pinned UCP spec (release/2026-08-25). Regenerate with 'npm run generate -- /path/to/ucp' (ucp checked out at release/2026-08-25), run pre-commit to format, and commit src/spec_generated.ts."
             exit 1
           fi
           echo "Committed models match regeneration from the pinned spec."
