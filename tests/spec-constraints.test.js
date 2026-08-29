@@ -459,6 +459,70 @@ test("CapabilityResponseSchema accepts valid extends names", () => {
   );
 });
 
+// --- CapabilityDiscoverySchema extends: the #55 twin --------------------
+// capability.json's `extends` oneOf is declared once, on $defs/base, and
+// inherited by BOTH $defs/response_schema (-> CapabilityResponseSchema,
+// fixed by #55) and $defs/platform_schema (-> CapabilityDiscoverySchema,
+// the discovery-profile projection). writeCompatibilityDiscoverySchemas()
+// hand-authors the discovery projection separately from the derived
+// response projection, and its `extends` field was left as a bare
+// `{ type: "string" }` stub -- the same defect #55 fixed on the response
+// side, unfixed on this twin.
+
+test("CapabilityDiscoverySchema rejects an empty extends array", () => {
+  assert.ok(
+    rejects(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "https://ucp.dev/schemas/shopping/checkout.json",
+      spec: "https://ucp.dev/specification/checkout",
+      version: "2026-04-08",
+      extends: [],
+    })
+  );
+});
+
+test("CapabilityDiscoverySchema rejects invalid extends names", () => {
+  assert.ok(
+    rejects(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "https://ucp.dev/schemas/shopping/checkout.json",
+      spec: "https://ucp.dev/specification/checkout",
+      version: "2026-04-08",
+      extends: "bad name",
+    })
+  );
+  assert.ok(
+    rejects(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "https://ucp.dev/schemas/shopping/checkout.json",
+      spec: "https://ucp.dev/specification/checkout",
+      version: "2026-04-08",
+      extends: ["com.example.good", "BadName"],
+    })
+  );
+});
+
+test("CapabilityDiscoverySchema accepts valid extends names", () => {
+  assert.ok(
+    accepts(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "https://ucp.dev/schemas/shopping/checkout.json",
+      spec: "https://ucp.dev/specification/checkout",
+      version: "2026-04-08",
+      extends: "dev.ucp.checkout",
+    })
+  );
+  assert.ok(
+    accepts(CapabilityDiscoverySchema, {
+      name: "dev.ucp.shopping.checkout",
+      schema: "https://ucp.dev/schemas/shopping/checkout.json",
+      spec: "https://ucp.dev/specification/checkout",
+      version: "2026-04-08",
+      extends: ["dev.ucp.checkout", "com.example_capability.v1"],
+    })
+  );
+});
+
 test("UcpSchema enforces the discovery version pattern", () => {
   const discovery = { capabilities: [], services: {} };
   assert.ok(rejects(UcpSchema, { ...discovery, version: "not-a-date" }));

@@ -833,6 +833,12 @@ function writeCompatibilityDiscoverySchemas() {
   const version = ucpSchema.$defs.version;
   const entityProperties = ucpSchema.$defs.entity.properties;
   const serviceEndpoint = serviceSchema.$defs.base.allOf[1].properties.endpoint;
+  // capability.json declares `extends` once, on $defs/base, as a oneOf of a
+  // reverse-domain-pattern string or a non-empty array of the same -- and both
+  // $defs/platform_schema (this discovery projection) and $defs/response_schema
+  // (capabilityResponse, below) inherit it via allOf from that shared base.
+  const capabilityExtends =
+    capabilitySchema.$defs.base.allOf[1].properties.extends;
 
   const signingKey = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -879,7 +885,7 @@ function writeCompatibilityDiscoverySchemas() {
     required: ["name", "schema", "spec", "version"],
     properties: {
       config: { type: "object", additionalProperties: true },
-      extends: { type: "string" },
+      extends: clone(capabilityExtends),
       name: { type: "string" },
       schema: clone(entityProperties.schema),
       spec: clone(entityProperties.spec),
