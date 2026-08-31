@@ -139,12 +139,12 @@ fi
 
 if [[ -d "$SPEC_DIR/schemas/common" ]]; then
   [[ -f "$SPEC_DIR/schemas/common/location_lookup.json" ]] && QUICKTYPE_ARGS+=(
-    --src "$SPEC_DIR/schemas/common/location_lookup.json#/\$defs/lookup_request"
-    --src "$SPEC_DIR/schemas/common/location_lookup.json#/\$defs/lookup_response"
+    --src "$SPEC_DIR/schemas/common/location_lookup.json#/\$defs/location_lookup_request"
+    --src "$SPEC_DIR/schemas/common/location_lookup.json#/\$defs/location_lookup_response"
   )
   [[ -f "$SPEC_DIR/schemas/common/location_search.json" ]] && QUICKTYPE_ARGS+=(
-    --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/search_request"
-    --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/search_response"
+    --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/location_search_request"
+    --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/location_search_response"
   )
   [[ -f "$SPEC_DIR/schemas/common/identity_linking.json" ]] && QUICKTYPE_ARGS+=(
     --src "$SPEC_DIR/schemas/common/identity_linking.json"

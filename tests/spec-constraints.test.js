@@ -57,6 +57,11 @@ const {
   EmbeddedSchema,
   SchemaEndpointSchema,
   UcpServiceSchema,
+  LookupResponseSchema,
+  LocationLookupResponseSchema,
+  SearchResponseSchema,
+  LocationSearchResponseSchema,
+  UcpDiscoveryProfileSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -173,9 +178,7 @@ test("PriceFilterSchema enforces amount constraints on min and max", () => {
 
 test("LineItemCreateRequestSchema enforces positive integer quantity", () => {
   const baseLineItem = {
-    id: "li_1",
-    item: { id: "item_1", price: 100, title: "Item 1" },
-    totals: [],
+    item: { id: "item_1" },
   };
   assert.ok(
     rejects(LineItemCreateRequestSchema, {
@@ -199,9 +202,7 @@ test("LineItemCreateRequestSchema enforces positive integer quantity", () => {
 
 test("LineItemUpdateRequestSchema enforces positive integer quantity", () => {
   const baseLineItem = {
-    id: "li_1",
-    item: { id: "item_1", price: 100, title: "Item 1" },
-    totals: [],
+    item: { id: "item_1" },
   };
   assert.ok(
     rejects(LineItemUpdateRequestSchema, {
@@ -736,4 +737,59 @@ test("the lookup message alias enforces the same variant rules", () => {
     rejects(LookupResponseMessageSchema, { type: "error", content: "x" })
   );
   assert.ok(accepts(LookupResponseMessageSchema, errorMessage));
+});
+
+test("Catalog LookupResponse requires products while Location LookupResponse requires locations", () => {
+  assert.ok(
+    accepts(LookupResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      products: [],
+    })
+  );
+  assert.ok(
+    rejects(LookupResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+  assert.ok(
+    accepts(LocationLookupResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+});
+
+test("Catalog SearchResponse requires products while Location SearchResponse requires locations", () => {
+  assert.ok(
+    accepts(SearchResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      products: [],
+    })
+  );
+  assert.ok(
+    rejects(SearchResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+  assert.ok(
+    accepts(LocationSearchResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+});
+
+test("UcpDiscoveryProfileSchema emits keys array per RFC 7517", () => {
+  assert.ok(
+    accepts(UcpDiscoveryProfileSchema, {
+      ucp: {
+        capabilities: [],
+        services: {},
+        version: "2026-08-25",
+      },
+      keys: [{ kid: "key-1", kty: "OKP" }],
+    })
+  );
 });

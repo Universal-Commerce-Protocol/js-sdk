@@ -178,8 +178,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "info_code",
   "input_correlation",
   "instrument_group",
-  "item",
-  "line_item",
   "link",
   "locality",
   "location",
@@ -971,7 +969,7 @@ function writeCompatibilityDiscoverySchemas() {
           },
         },
       },
-      signing_keys: {
+      keys: {
         type: "array",
         items: { $ref: "signing_key.json" },
       },
@@ -1146,6 +1144,32 @@ function renameExtensionCheckoutDef(projectedSchema) {
   return schema;
 }
 
+function renameLocationDefs(projectedSchema) {
+  const schema = clone(projectedSchema);
+  if (!schema.$defs) {
+    return schema;
+  }
+
+  if (schema.$defs.lookup_request) {
+    schema.$defs.location_lookup_request = schema.$defs.lookup_request;
+    delete schema.$defs.lookup_request;
+  }
+  if (schema.$defs.lookup_response) {
+    schema.$defs.location_lookup_response = schema.$defs.lookup_response;
+    delete schema.$defs.lookup_response;
+  }
+  if (schema.$defs.search_request) {
+    schema.$defs.location_search_request = schema.$defs.search_request;
+    delete schema.$defs.search_request;
+  }
+  if (schema.$defs.search_response) {
+    schema.$defs.location_search_response = schema.$defs.search_response;
+    delete schema.$defs.search_response;
+  }
+
+  return schema;
+}
+
 function writeProjectedTopLevelSchemas(schemaCache) {
   for (const [sourceRel, variants] of Object.entries(topLevelVariantMap)) {
     const sourceSchema = schemaCache.get(sourceRel);
@@ -1174,6 +1198,13 @@ function writeProjectedTopLevelSchemas(schemaCache) {
         sourceRel.endsWith("payment_split_payments.json")
       ) {
         projected = renameExtensionCheckoutDef(projected);
+      }
+
+      if (
+        sourceRel.endsWith("location_lookup.json") ||
+        sourceRel.endsWith("location_search.json")
+      ) {
+        projected = renameLocationDefs(projected);
       }
 
       writeJson(path.join(outputSchemasRoot, outputRel), projected);

@@ -248,8 +248,6 @@ outputText = outputText
 const requiredCompatibilityExports = [
   { alias: "TotalResponse", target: "LineItemTotal" },
   { alias: "TotalsResponse", target: "CheckoutResponseTotal" },
-  { alias: "LineItemCreateRequest", target: "LineItem" },
-  { alias: "LineItemUpdateRequest", target: "LineItem" },
   { alias: "PurpleUnitPrice", target: "UnitPrice" },
 ];
 
