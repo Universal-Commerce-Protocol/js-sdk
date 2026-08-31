@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/common/types/payment.json",
+  "title": "Payment",
+  "type": "object",
+  "properties": {
+    "instruments": { "type": "array", "items": { "type": "string" } },
+    "constraints": {
+      "$ref": "test_recursive_constraint.json",
+      "description": "A self-referential constraint expression, mirroring 2026-08-25's real constraint_expression.json shape, that quicktype's typescript-zod target cannot represent."
+    }
+  }
+}

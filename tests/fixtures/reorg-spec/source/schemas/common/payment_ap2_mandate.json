@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/common/payment_ap2_mandate.json",
+  "name": "dev.ucp.common.payment.ap2_mandate",
+  "title": "Payment AP2 Mandate Extension",
+  "$defs": {
+    "merchant_authorization": { "type": "object", "properties": { "jwt": { "type": "string" } } },
+    "checkout_mandate": { "type": "object", "properties": { "jwt": { "type": "string" } } },
+    "ap2_with_merchant_authorization": { "type": "object", "properties": { "merchant_authorization": { "type": "string" } } },
+    "ap2_with_checkout_mandate": { "type": "object", "properties": { "checkout_mandate": { "type": "string" } } },
+    "dev.ucp.shopping.checkout": {
+      "type": "object",
+      "properties": {
+        "ap2": { "type": "object", "ucp_request": "optional" }
+      }
+    },
+    "error_code": { "type": "string", "enum": ["ap2_mandate_invalid"] }
+  }
+}

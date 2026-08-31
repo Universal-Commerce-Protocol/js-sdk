@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/shopping/checkout.json",
+  "name": "dev.ucp.shopping.checkout",
+  "title": "Checkout",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" }
+  }
+}

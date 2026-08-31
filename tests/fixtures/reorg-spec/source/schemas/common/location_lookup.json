@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/common/location_lookup.json",
+  "name": "dev.ucp.common.location.lookup",
+  "title": "Location Lookup",
+  "$defs": {
+    "lookup_request": { "type": "object", "properties": { "id": { "type": "string" }, "location_radius_marker": { "type": "string" } } },
+    "lookup_response": { "type": "object", "properties": { "id": { "type": "string" }, "location_radius_marker": { "type": "string" } } }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/common/types/test_recursive_constraint.json",
+  "title": "Test Recursive Constraint",
+  "description": "Minimal stand-in for 2026-08-25's real common/types/constraint_expression.json, used only to exercise dropSelfReferentialProperties in project-current-ucp-schemas.mjs. Genuinely self-referential ($ref: \"#\" pointing at the whole document, not a $defs fragment), the exact shape quicktype's typescript-zod target cannot place.",
+  "type": "object",
+  "properties": {
+    "anyOf": {
+      "type": "array",
+      "items": { "$ref": "#" }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/transports/mcp_tool_call.json",
+  "title": "MCP Tool Call Envelope",
+  "description": "Envelope for MCP tool calls.",
+  "oneOf": [{ "$ref": "#/$defs/call" }],
+  "$defs": {
+    "call": { "type": "object", "properties": { "tool": { "type": "string" } } }
+  }
+}

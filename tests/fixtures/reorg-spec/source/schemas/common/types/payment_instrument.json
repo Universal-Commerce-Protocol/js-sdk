@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/common/types/payment_instrument.json",
+  "title": "Payment Instrument",
+  "$defs": {
+    "selected_payment_instrument": {
+      "type": "object",
+      "properties": {
+        "handler_id": { "type": "string" }
+      }
+    }
+  }
+}

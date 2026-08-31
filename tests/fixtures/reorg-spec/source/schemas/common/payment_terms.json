@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/common/payment_terms.json",
+  "name": "dev.ucp.common.payment.terms",
+  "title": "Payment Terms Extension",
+  "$defs": {
+    "payment_term": { "type": "object", "properties": { "due_date": { "type": "string" } } },
+    "dev.ucp.shopping.checkout": {
+      "type": "object",
+      "properties": {
+        "terms": { "type": "array", "items": { "$ref": "#/$defs/payment_term" }, "ucp_request": "optional" }
+      }
+    },
+    "dev.ucp.shopping.order": {
+      "type": "object",
+      "properties": {
+        "terms": { "type": "array", "items": { "$ref": "#/$defs/payment_term" }, "ucp_response": "optional" }
+      }
+    }
+  }
+}

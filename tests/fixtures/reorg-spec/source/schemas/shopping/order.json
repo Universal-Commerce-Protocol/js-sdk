@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/shopping/order.json",
+  "name": "dev.ucp.shopping.order",
+  "title": "Order",
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ucp.dev/schemas/shopping/fulfillment.json",
+  "name": "dev.ucp.shopping.fulfillment",
+  "title": "Fulfillment Extension",
+  "$defs": {
+    "dev.ucp.shopping.checkout": {
+      "type": "object",
+      "properties": {
+        "method": { "type": "string", "ucp_request": "optional" }
+      }
+    }
+  }
+}
