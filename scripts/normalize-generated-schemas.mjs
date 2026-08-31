@@ -23,8 +23,6 @@ const sourceFile = ts.createSourceFile(
 );
 
 const canonicalNames = new Map([
-  ["AdjustmentLineItem", "LineItemQuantityRef"],
-  ["AdjustmentLineItemClass", "LineItemQuantityRef"],
   ["AllocationClass", "Allocation"],
   ["AllocationElement", "Allocation"],
   ["AppliedAllocation", "Allocation"],
@@ -32,22 +30,15 @@ const canonicalNames = new Map([
   ["BuyerClass", "Buyer"],
   ["CardPaymentInstrument", "PaymentInstrument"],
   ["CheckoutUpdateRequestPayment", "PaymentSelection"],
-  ["EventLineItem", "LineItemQuantityRef"],
-  ["ExpectationLineItem", "LineItemQuantityRef"],
-  ["ExpectationLineItemClass", "LineItemQuantityRef"],
+  ["ContextClass", "Context"],
   ["FluffyConsent", "Consent"],
   ["FulfillmentDestinationRequestElement", "FulfillmentDestinationRequest"],
-  ["FulfillmentEventLineItem", "LineItemQuantityRef"],
   ["GroupClass", "FulfillmentGroupUpdateRequest"],
   ["GroupElement", "FulfillmentGroupCreateRequest"],
   ["IdentityClass", "PaymentIdentity"],
   ["ItemClass", "ItemReference"],
-  ["ItemCreateRequest", "ItemReference"],
-  ["ItemUpdateRequest", "ItemReference"],
   ["LineItemClass", "LineItemUpdateRequest"],
-  ["LineItemElement", "LineItemCreateRequest"],
-  ["LineItemCreateRequest", "LineItem"],
-  ["LineItemUpdateRequest", "LineItem"],
+  ["LineItemElement", "LineItem"],
   ["LineItemItem", "ItemReference"],
   ["LinkElement", "Link"],
   ["Mcp", "SchemaEndpoint"],
@@ -63,7 +54,7 @@ const canonicalNames = new Map([
   ["TentacledConsent", "Consent"],
   ["TokenCredentialCreateRequest", "TokenCredentialRequest"],
   ["TokenCredentialUpdateRequest", "TokenCredentialRequest"],
-  ["TotalResponse", "CheckoutResponseTotal"],
+  ["TotalResponse", "Total"],
   ["TotalsResponse", "CheckoutResponseTotal"],
   ["UcpCheckoutResponse", "UcpResponse"],
   ["UcpOrderResponse", "UcpResponse"],
@@ -240,15 +231,27 @@ outputText = outputText
   .replace(/\bPaymentClassSchema\b/g, "PaymentSplitPaymentsSchema")
   .replace(/\bPaymentClass\b/g, "PaymentSplitPayments")
   .replace(
+    /export const ConstraintsElementSchema = z\.object\(\{([\s\S]*?)\}\);/g,
+    "export const ConstraintsElementSchema = z.object({$1}).passthrough();"
+  )
+  .replace(
     /export const ConstraintExpressionSchema = z\.object\(\{([\s\S]*?)\}\);/g,
     "export const ConstraintExpressionSchema = z.object({$1}).passthrough();"
   );
 
 // Compatibility exports for schemas referenced across SDK versions and tests
 const requiredCompatibilityExports = [
-  { alias: "TotalResponse", target: "LineItemTotal" },
+  { alias: "TotalResponse", target: "Total" },
   { alias: "TotalsResponse", target: "CheckoutResponseTotal" },
   { alias: "PurpleUnitPrice", target: "UnitPrice" },
+  { alias: "PaymentTerm", target: "PurplePaymentTerm" },
+  { alias: "CheckoutCreateRequestContext", target: "Context" },
+  { alias: "CheckoutResponseMessage", target: "Message" },
+  { alias: "LookupResponseMessage", target: "Message" },
+  { alias: "CheckoutCreateRequestSignals", target: "Signals" },
+  { alias: "LookupRequestSignals", target: "Signals" },
+  { alias: "LineItemQuantityRef", target: "EventLineItem" },
+  { alias: "Provider", target: "IdentityProvider" },
 ];
 
 for (const { alias, target } of requiredCompatibilityExports) {

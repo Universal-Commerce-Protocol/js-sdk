@@ -147,16 +147,22 @@ if [[ -d "$SPEC_DIR/schemas/common" ]]; then
     --src "$SPEC_DIR/schemas/common/location_search.json#/\$defs/location_search_response"
   )
   [[ -f "$SPEC_DIR/schemas/common/identity_linking.json" ]] && QUICKTYPE_ARGS+=(
-    --src "$SPEC_DIR/schemas/common/identity_linking.json"
+    --src "$SPEC_DIR/schemas/common/identity_linking.json#/\$defs/provider"
+    --src "$SPEC_DIR/schemas/common/identity_linking.json#/\$defs/scope_policy"
   )
   [[ -f "$SPEC_DIR/schemas/common/loyalty.json" ]] && QUICKTYPE_ARGS+=(
-    --src "$SPEC_DIR/schemas/common/loyalty.json"
+    --src "$SPEC_DIR/schemas/common/loyalty.json#/\$defs/loyalty_membership"
+    --src "$SPEC_DIR/schemas/common/loyalty.json#/\$defs/membership_tier"
+    --src "$SPEC_DIR/schemas/common/loyalty.json#/\$defs/membership_reward"
+    --src "$SPEC_DIR/schemas/common/loyalty.json#/\$defs/earning_forecast"
+    --src "$SPEC_DIR/schemas/common/loyalty.json#/\$defs/reward_currency"
+    --src "$SPEC_DIR/schemas/common/loyalty.json#/\$defs/checkout"
   )
   [[ -f "$SPEC_DIR/schemas/common/payment_terms.json" ]] && QUICKTYPE_ARGS+=(
-    --src "$SPEC_DIR/schemas/common/payment_terms.json"
-  )
-  [[ -f "$SPEC_DIR/schemas/common/payment_authentication.json" ]] && QUICKTYPE_ARGS+=(
-    --src "$SPEC_DIR/schemas/common/payment_authentication.json"
+    --src "$SPEC_DIR/schemas/common/payment_terms.json#/\$defs/payment"
+    --src "$SPEC_DIR/schemas/common/payment_terms.json#/\$defs/order_payment"
+    --src "$SPEC_DIR/schemas/common/payment_terms.json#/\$defs/payment_term"
+    --src "$SPEC_DIR/schemas/common/payment_terms.json#/\$defs/checkout"
   )
   [[ -f "$SPEC_DIR/schemas/common/payment_split_payments.json" ]] && QUICKTYPE_ARGS+=(
     --src "$SPEC_DIR/schemas/common/payment_split_payments.json#/\$defs/instrument_group"
@@ -178,11 +184,15 @@ if [[ -f "$SPEC_DIR/schemas/profile.json" ]]; then
   QUICKTYPE_ARGS+=(--src "$SPEC_DIR/schemas/profile.json")
 fi
 
-QUICKTYPE_ARGS+=(-o "$TMP_OUTPUT")
-
-if [[ "$SCHEMA_LAYOUT" == "legacy" ]]; then
+if [[ -d "$SPEC_DIR/schemas/shopping/types" ]]; then
   QUICKTYPE_ARGS+=(--src "$SPEC_DIR"/schemas/shopping/types/*.json)
 fi
+
+if [[ -d "$SPEC_DIR/schemas/common/types" ]]; then
+  QUICKTYPE_ARGS+=(--src "$SPEC_DIR"/schemas/common/types/*.json)
+fi
+
+QUICKTYPE_ARGS+=(-o "$TMP_OUTPUT")
 
 if [[ -x "./node_modules/.bin/quicktype" ]]; then
   ./node_modules/.bin/quicktype "${QUICKTYPE_ARGS[@]}"

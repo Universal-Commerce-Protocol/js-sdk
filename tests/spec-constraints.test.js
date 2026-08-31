@@ -62,6 +62,11 @@ const {
   SearchResponseSchema,
   LocationSearchResponseSchema,
   UcpDiscoveryProfileSchema,
+  PanCredentialSchema,
+  NetworkTokenCredentialSchema,
+  ProviderSchema,
+  LoyaltyMembershipSchema,
+  PaymentTermSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -790,6 +795,79 @@ test("UcpDiscoveryProfileSchema emits keys array per RFC 7517", () => {
         version: "2026-08-25",
       },
       keys: [{ kid: "key-1", kty: "OKP" }],
+    })
+  );
+});
+
+test("PanCredentialSchema validates PAN payment credentials", () => {
+  assert.ok(
+    accepts(PanCredentialSchema, {
+      number: "4111111111111111",
+      expiry_month: 12,
+      expiry_year: 2028,
+      type: "pan",
+    })
+  );
+  assert.ok(
+    rejects(PanCredentialSchema, {
+      type: "pan",
+    })
+  );
+});
+
+test("NetworkTokenCredentialSchema validates network token credentials", () => {
+  assert.ok(
+    accepts(NetworkTokenCredentialSchema, {
+      number: "4111111111111111",
+      cryptogram: "crypto_data",
+      expiry_month: 12,
+      expiry_year: 2028,
+      type: "network_token",
+    })
+  );
+  assert.ok(
+    rejects(NetworkTokenCredentialSchema, {
+      type: "network_token",
+    })
+  );
+});
+
+test("ProviderSchema validates identity provider configuration", () => {
+  assert.ok(
+    accepts(ProviderSchema, {
+      type: "oauth2",
+    })
+  );
+});
+
+test("LoyaltyMembershipSchema validates loyalty membership metadata", () => {
+  assert.ok(
+    accepts(LoyaltyMembershipSchema, {
+      id: "mem_123",
+      name: "Gold Member",
+      provisional: false,
+    })
+  );
+  assert.ok(
+    rejects(LoyaltyMembershipSchema, {
+      id: "mem_123",
+    })
+  );
+});
+
+test("PaymentTermSchema validates payment terms", () => {
+  assert.ok(
+    accepts(PaymentTermSchema, {
+      id: "term_net30",
+      title: "Net 30 Days",
+      schedules: [
+        {
+          id: "sched_1",
+          type: "installment",
+          amount: 10000,
+          description: { default: "First installment" },
+        },
+      ],
     })
   );
 });

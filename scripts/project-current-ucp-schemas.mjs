@@ -1034,6 +1034,7 @@ function writeCompatibilityCoreSchemas() {
       response_cart_schema: { $ref: "../discovery/ucp_response.json" },
       response_catalog_schema: { $ref: "../discovery/ucp_response.json" },
       response_location_schema: { $ref: "../discovery/ucp_response.json" },
+      error: { $ref: "../discovery/ucp_response.json" },
     },
   };
 
@@ -1195,7 +1196,10 @@ function writeProjectedTopLevelSchemas(schemaCache) {
         sourceRel.endsWith("discount.json") ||
         sourceRel.endsWith("fulfillment.json") ||
         sourceRel.endsWith("payment_ap2_mandate.json") ||
-        sourceRel.endsWith("payment_split_payments.json")
+        sourceRel.endsWith("payment_split_payments.json") ||
+        sourceRel.endsWith("payment_terms.json") ||
+        sourceRel.endsWith("payment_authentication.json") ||
+        sourceRel.endsWith("loyalty.json")
       ) {
         projected = renameExtensionCheckoutDef(projected);
       }
