@@ -761,6 +761,22 @@ function rewriteItemRefForDiscovery(items) {
   return items ?? { type: "object", additionalProperties: true };
 }
 
+function rewriteRefForDiscovery(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  if (Array.isArray(obj)) return obj.map(rewriteRefForDiscovery);
+  const copy = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === "$ref" && typeof v === "string") {
+      const [file, fragment = ""] = v.split("#");
+      const rel = `../schemas/${file}`;
+      copy.$ref = fragment ? `${rel}#${fragment}` : rel;
+    } else {
+      copy[k] = rewriteRefForDiscovery(v);
+    }
+  }
+  return copy;
+}
+
 // Derive a flat compat schema for an entity's #/$defs/response_schema.
 function buildEntityResponseSchema(title, entitySchema, rootDocs) {
   const acc = flattenAllOf(
@@ -837,8 +853,9 @@ function writeCompatibilityDiscoverySchemas() {
   // reverse-domain-pattern string or a non-empty array of the same -- and both
   // $defs/platform_schema (this discovery projection) and $defs/response_schema
   // (capabilityResponse, below) inherit it via allOf from that shared base.
-  const capabilityExtends =
-    capabilitySchema.$defs.base.allOf[1].properties.extends;
+  const capabilityExtends = rewriteRefForDiscovery(
+    capabilitySchema.$defs.base.allOf[1].properties.extends
+  );
 
   const signingKey = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
