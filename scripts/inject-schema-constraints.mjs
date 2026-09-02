@@ -486,6 +486,13 @@ const conditionalIndex = new Map();
 // setKey -> Map(signature -> rules).
 const variantUnionIndex = new Map();
 
+// Per-variant scalar constraints for discriminated object unions. quicktype
+// flattens the branches into one z.object, so fields that occur only in a
+// subset of variants cannot safely receive a global method. Retain them as
+// discriminator-scoped rules and render them inside the existing superRefine.
+// setKey -> Map(signature -> rules).
+const variantUnionFieldIndex = new Map();
+
 function recordObject(properties, file, propertyFiles) {
   const setKey = Object.keys(properties).sort().join(",");
   if (!constraintIndex.has(setKey)) {
@@ -946,13 +953,39 @@ function recordVariantUnionRules(node, file) {
   ) {
     return;
   }
-  rules.sort((left, right) =>
+  const fieldRules = [];
+  for (const [index, variant] of variants.entries()) {
+    for (const [name, propertyNode] of Object.entries(variant.properties)) {
+      const descriptor = describeConstraint(
+        propertyNode,
+        variant.propertyFiles[name] || variant.file
+      );
+      if (!descriptor || !descriptor.descriptor.format) {
+        continue;
+      }
+      fieldRules.push({
+        kind: "format",
+        discriminator,
+        values: [values[index]],
+        field: name,
+        format: descriptor.descriptor.format,
+      });
+    }
+  }
+  fieldRules.sort((left, right) =>
     JSON.stringify(left).localeCompare(JSON.stringify(right))
   );
   const setKey = [...unionNames].sort().join(",");
   const signature = JSON.stringify(rules);
   if (!variantUnionIndex.has(setKey)) variantUnionIndex.set(setKey, new Map());
   variantUnionIndex.get(setKey).set(signature, rules);
+  if (fieldRules.length) {
+    const fieldSignature = JSON.stringify(fieldRules);
+    if (!variantUnionFieldIndex.has(setKey)) {
+      variantUnionFieldIndex.set(setKey, new Map());
+    }
+    variantUnionFieldIndex.get(setKey).set(fieldSignature, fieldRules);
+  }
 }
 
 function walkSchema(node, file, seen = new Set(), depth = 0) {
@@ -1123,7 +1156,14 @@ for (const [setKey, bySignature] of variantUnionIndex) {
     ambiguous.push({ setKey, name: "<variant-union/conditional>", count: 2 });
     continue;
   }
-  resolvedVariantUnions.set(setKey, [...bySignature.values()][0]);
+  const requiredRules = [...bySignature.values()][0];
+  const fields = variantUnionFieldIndex.get(setKey);
+  if (fields?.size > 1) {
+    ambiguous.push({ setKey, name: "<variant-union-field>", count: fields.size });
+    continue;
+  }
+  const fieldRules = fields ? [...fields.values()][0] : [];
+  resolvedVariantUnions.set(setKey, [...requiredRules, ...fieldRules]);
 }
 
 // --- Shared {id,quantity} line-item reference: contextual split --------------
@@ -1288,6 +1328,8 @@ function renderConditionalRefine(rules) {
     values: rule.values,
     negated: rule.negated ?? false,
     required: rule.required ?? [],
+    field: rule.field ?? null,
+    format: rule.format ?? null,
     target: rule.target ?? null,
     minimum: rule.minimum ?? null,
     maximum: rule.maximum ?? null,
@@ -1306,6 +1348,13 @@ function renderConditionalRefine(rules) {
     `for (const field of rule.required) {` +
     `if (!(field in record)) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
     `path: [field], message: "Field is required by a conditional constraint" });` +
+    `}continue;}` +
+    `if (rule.kind === "format") {` +
+    `const field = rule.field;` +
+    `const fieldValue = field === null ? undefined : record[field];` +
+    `if (rule.format === "uri" && typeof fieldValue === "string") {` +
+    `try { new URL(fieldValue); } catch { if (field !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
+    `path: [field], message: "Value must be a valid URI" }); }` +
     `}continue;}` +
     `if (rule.target === null) continue;` +
     `const target = record[rule.target];` +

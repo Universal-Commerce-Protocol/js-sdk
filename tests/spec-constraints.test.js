@@ -410,6 +410,57 @@ test("OrderConfirmationSchema rejects a non-URL permalink_url (format: uri)", ()
   );
 });
 
+// --- Discriminated response messages: branch-local URI fields ---------------
+// The warning branch declares URL-formatted optional fields, but quicktype
+// flattens the error/info/warning oneOf into one object. URI checks must apply
+// only when `type` selects the warning branch.
+
+const warningMessage = {
+  type: "warning",
+  code: "w1",
+  content: "notice",
+  severity: "recoverable",
+};
+
+test("warning messages reject non-URI url and image_url values", () => {
+  assert.ok(
+    rejects(CheckoutResponseMessageSchema, {
+      ...warningMessage,
+      url: "not-a-url",
+    })
+  );
+  assert.ok(
+    rejects(CheckoutResponseMessageSchema, {
+      ...warningMessage,
+      image_url: "not-a-url",
+    })
+  );
+});
+
+test("response messages keep valid warning URLs and non-warning variants", () => {
+  assert.ok(
+    accepts(CheckoutResponseMessageSchema, {
+      ...warningMessage,
+      url: "https://merchant.example/help",
+      image_url: "https://cdn.example/notice.png",
+    })
+  );
+  assert.ok(
+    accepts(CheckoutResponseMessageSchema, {
+      type: "error",
+      code: "e1",
+      content: "failed",
+      severity: "recoverable",
+    })
+  );
+  assert.ok(
+    accepts(LookupResponseMessageSchema, {
+      ...warningMessage,
+      url: "https://merchant.example/help",
+    })
+  );
+});
+
 // --- Cross-file $ref provenance: entity version patterns --------------------
 // Every UCP entity inherits `version` from ucp.json#/$defs/entity via a
 // cross-file allOf `$ref`. The injector must resolve that property's own
