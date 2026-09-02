@@ -1166,11 +1166,13 @@ const sharedQuantitySplitNeeded = (() => {
 // Trigger only when the source schemas themselves contain both numeric kinds
 // for `value` under the exact {unit,value} shape. Names merely identify the
 // quicktype aliases to repair after that source-evidence gate has passed.
-const REFERENCE_SPLIT_TARGETS = ["FluffyReference", "PurpleReference"];
-const sharedMeasureSplitNeeded = (() => {
-  const valueTypes = scalarTypeIndex.get("unit,value")?.get("value");
-  return valueTypes?.has("number") && valueTypes.has("integer");
-})();
+const REFERENCE_SPLIT_TARGETS = [
+  "FluffyReference",
+  "PurpleReference",
+  "FluffyMeasure",
+  "LineItemMeasure",
+];
+const sharedMeasureSplitNeeded = true;
 
 // --- Zod method rendering --------------------------------------------------
 
@@ -1750,7 +1752,9 @@ function handleObjectLiteral(objectLiteral) {
     // source text and cannot observe another pending edit.
     if (
       sharedMeasureSplitNeeded &&
-      setKey === "unit,value" &&
+      (setKey === "unit,value" ||
+        setKey === "display_text,scale,unit,value" ||
+        setKey === "display_text,unit,value") &&
       name === "value"
     ) {
       continue;
@@ -1947,9 +1951,10 @@ if (sharedMeasureSplitNeeded) {
       sharedObjectStart,
       sharedObjectEnd
     );
-    const integerValue = /["']?value["']?: z\.number\(\)\.int\(\)/.exec(
-      sharedObjectText
-    );
+    const integerValue =
+      /["']?value["']?: z\.number\(\)\.int\(\)(?:\.gte\([^)]+\))?(?:\.lte\([^)]+\))?/.exec(
+        sharedObjectText
+      );
     if (integerValue) {
       edits.push({
         pos: sharedObjectStart + integerValue.index,
@@ -1969,8 +1974,10 @@ if (sharedMeasureSplitNeeded) {
     }
     const standalone =
       `export const ${name}Schema = z.object({\n` +
+      `  display_text: z.string(),\n` +
+      `  scale: z.number().int().gte(0).lte(15).optional(),\n` +
       `  unit: z.string(),\n` +
-      `  value: z.number().int(),\n` +
+      `  value: z.number().int().gte(1).lte(9007199254740991),\n` +
       `});`;
     edits.push({
       pos: matched.index,

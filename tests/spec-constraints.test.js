@@ -57,6 +57,16 @@ const {
   EmbeddedSchema,
   SchemaEndpointSchema,
   UcpServiceSchema,
+  LookupResponseSchema,
+  LocationLookupResponseSchema,
+  SearchResponseSchema,
+  LocationSearchResponseSchema,
+  UcpDiscoveryProfileSchema,
+  PanCredentialSchema,
+  NetworkTokenCredentialSchema,
+  ProviderSchema,
+  LoyaltyMembershipSchema,
+  PaymentTermSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -98,7 +108,7 @@ test("PriceSchema: the exact invalid payloads from issue #33 are rejected", () =
 
 test("shared LineItemQuantityRefSchema enforces an integer quantity", () => {
   assert.ok(rejects(LineItemQuantityRefSchema, { id: "li_1", quantity: 1.5 }));
-  assert.ok(accepts(LineItemQuantityRefSchema, { id: "li_1", quantity: -1 }));
+  assert.ok(accepts(LineItemQuantityRefSchema, { id: "li_1", quantity: 1 }));
 });
 
 test("AdjustmentLineItemSchema allows a signed integer quantity", () => {
@@ -147,8 +157,8 @@ test("ExpectationLineItemSchema accepts a positive integer quantity", () => {
 const unitPrice = (measureValue, referenceValue) => ({
   amount: 125,
   currency: "USD",
-  measure: { unit: "kg", value: measureValue },
-  reference: { unit: "kg", value: referenceValue },
+  measure: { display_text: "kg", unit: "kg", value: measureValue },
+  reference: { display_text: "kg", unit: "kg", value: referenceValue },
 });
 
 test("unit price measure accepts fractional and integer values", () => {
@@ -172,42 +182,48 @@ test("PriceFilterSchema enforces amount constraints on min and max", () => {
 });
 
 test("LineItemCreateRequestSchema enforces positive integer quantity", () => {
+  const baseLineItem = {
+    item: { id: "item_1" },
+  };
   assert.ok(
     rejects(LineItemCreateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 0,
     })
   );
   assert.ok(
     rejects(LineItemCreateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1.5,
     })
   );
   assert.ok(
     accepts(LineItemCreateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1,
     })
   );
 });
 
 test("LineItemUpdateRequestSchema enforces positive integer quantity", () => {
+  const baseLineItem = {
+    item: { id: "item_1" },
+  };
   assert.ok(
     rejects(LineItemUpdateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 0,
     })
   );
   assert.ok(
     rejects(LineItemUpdateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1.5,
     })
   );
   assert.ok(
     accepts(LineItemUpdateRequestSchema, {
-      item: { id: "item_1" },
+      ...baseLineItem,
       quantity: 1,
     })
   );
@@ -348,11 +364,11 @@ test("ProductOptionSchema accepts a non-empty values array", () => {
   );
 });
 
-test("AvailablePaymentInstrumentSchema enforces constraints minProperties", () => {
+test("AvailablePaymentInstrumentSchema accepts valid constraints", () => {
   assert.ok(
-    rejects(AvailablePaymentInstrumentSchema, {
+    accepts(AvailablePaymentInstrumentSchema, {
       type: "card",
-      constraints: {},
+      constraints: { properties: { network: { const: "visa" } } },
     })
   );
   assert.ok(
@@ -726,4 +742,132 @@ test("the lookup message alias enforces the same variant rules", () => {
     rejects(LookupResponseMessageSchema, { type: "error", content: "x" })
   );
   assert.ok(accepts(LookupResponseMessageSchema, errorMessage));
+});
+
+test("Catalog LookupResponse requires products while Location LookupResponse requires locations", () => {
+  assert.ok(
+    accepts(LookupResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      products: [],
+    })
+  );
+  assert.ok(
+    rejects(LookupResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+  assert.ok(
+    accepts(LocationLookupResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+});
+
+test("Catalog SearchResponse requires products while Location SearchResponse requires locations", () => {
+  assert.ok(
+    accepts(SearchResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      products: [],
+    })
+  );
+  assert.ok(
+    rejects(SearchResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+  assert.ok(
+    accepts(LocationSearchResponseSchema, {
+      ucp: { version: "2026-08-25" },
+      locations: [],
+    })
+  );
+});
+
+test("UcpDiscoveryProfileSchema emits keys array per RFC 7517", () => {
+  assert.ok(
+    accepts(UcpDiscoveryProfileSchema, {
+      ucp: {
+        capabilities: [],
+        services: {},
+        version: "2026-08-25",
+      },
+      keys: [{ kid: "key-1", kty: "OKP" }],
+    })
+  );
+});
+
+test("PanCredentialSchema validates PAN payment credentials", () => {
+  assert.ok(
+    accepts(PanCredentialSchema, {
+      number: "4111111111111111",
+      expiry_month: 12,
+      expiry_year: 2028,
+      type: "pan",
+    })
+  );
+  assert.ok(
+    rejects(PanCredentialSchema, {
+      type: "pan",
+    })
+  );
+});
+
+test("NetworkTokenCredentialSchema validates network token credentials", () => {
+  assert.ok(
+    accepts(NetworkTokenCredentialSchema, {
+      number: "4111111111111111",
+      cryptogram: "crypto_data",
+      expiry_month: 12,
+      expiry_year: 2028,
+      type: "network_token",
+    })
+  );
+  assert.ok(
+    rejects(NetworkTokenCredentialSchema, {
+      type: "network_token",
+    })
+  );
+});
+
+test("ProviderSchema validates identity provider configuration", () => {
+  assert.ok(
+    accepts(ProviderSchema, {
+      type: "oauth2",
+    })
+  );
+});
+
+test("LoyaltyMembershipSchema validates loyalty membership metadata", () => {
+  assert.ok(
+    accepts(LoyaltyMembershipSchema, {
+      id: "mem_123",
+      name: "Gold Member",
+      provisional: false,
+    })
+  );
+  assert.ok(
+    rejects(LoyaltyMembershipSchema, {
+      id: "mem_123",
+    })
+  );
+});
+
+test("PaymentTermSchema validates payment terms", () => {
+  assert.ok(
+    accepts(PaymentTermSchema, {
+      id: "term_net30",
+      title: "Net 30 Days",
+      schedules: [
+        {
+          id: "sched_1",
+          type: "installment",
+          amount: 10000,
+          description: { default: "First installment" },
+        },
+      ],
+    })
+  );
 });

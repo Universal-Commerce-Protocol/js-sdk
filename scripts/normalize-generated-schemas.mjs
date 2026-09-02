@@ -23,8 +23,6 @@ const sourceFile = ts.createSourceFile(
 );
 
 const canonicalNames = new Map([
-  ["AdjustmentLineItem", "LineItemQuantityRef"],
-  ["AdjustmentLineItemClass", "LineItemQuantityRef"],
   ["AllocationClass", "Allocation"],
   ["AllocationElement", "Allocation"],
   ["AppliedAllocation", "Allocation"],
@@ -32,20 +30,15 @@ const canonicalNames = new Map([
   ["BuyerClass", "Buyer"],
   ["CardPaymentInstrument", "PaymentInstrument"],
   ["CheckoutUpdateRequestPayment", "PaymentSelection"],
-  ["EventLineItem", "LineItemQuantityRef"],
-  ["ExpectationLineItem", "LineItemQuantityRef"],
-  ["ExpectationLineItemClass", "LineItemQuantityRef"],
+  ["ContextClass", "Context"],
   ["FluffyConsent", "Consent"],
   ["FulfillmentDestinationRequestElement", "FulfillmentDestinationRequest"],
-  ["FulfillmentEventLineItem", "LineItemQuantityRef"],
   ["GroupClass", "FulfillmentGroupUpdateRequest"],
   ["GroupElement", "FulfillmentGroupCreateRequest"],
   ["IdentityClass", "PaymentIdentity"],
   ["ItemClass", "ItemReference"],
-  ["ItemCreateRequest", "ItemReference"],
-  ["ItemUpdateRequest", "ItemReference"],
   ["LineItemClass", "LineItemUpdateRequest"],
-  ["LineItemElement", "LineItemCreateRequest"],
+  ["LineItemElement", "LineItem"],
   ["LineItemItem", "ItemReference"],
   ["LinkElement", "Link"],
   ["Mcp", "SchemaEndpoint"],
@@ -56,10 +49,13 @@ const canonicalNames = new Map([
   ["PaymentCreateRequest", "PaymentSelection"],
   ["PaymentUpdateRequest", "PaymentSelection"],
   ["PurpleConsent", "Consent"],
+  ["PurpleUnitPrice", "UnitPrice"],
   ["Rest", "SchemaEndpoint"],
   ["TentacledConsent", "Consent"],
   ["TokenCredentialCreateRequest", "TokenCredentialRequest"],
   ["TokenCredentialUpdateRequest", "TokenCredentialRequest"],
+  ["TotalResponse", "Total"],
+  ["TotalsResponse", "CheckoutResponseTotal"],
   ["UcpCheckoutResponse", "UcpResponse"],
   ["UcpOrderResponse", "UcpResponse"],
 ]);
@@ -142,11 +138,16 @@ for (const names of initialGroups.values()) {
 // Pass 3: Resolve aliases in initializers
 for (const block of schemaBlocks.values()) {
   let resolvedInitializer = block.normalizedInitializer;
-  const sortedAliases = Array.from(aliasMap.keys()).sort((a, b) => b.length - a.length);
+  const sortedAliases = Array.from(aliasMap.keys()).sort(
+    (a, b) => b.length - a.length
+  );
   for (const alias of sortedAliases) {
     const canonical = aliasMap.get(alias);
     const regex = new RegExp(`\\b${alias}Schema\\b`, "g");
-    resolvedInitializer = resolvedInitializer.replace(regex, `${canonical}Schema`);
+    resolvedInitializer = resolvedInitializer.replace(
+      regex,
+      `${canonical}Schema`
+    );
   }
   block.resolvedInitializer = resolvedInitializer;
 }
@@ -228,6 +229,35 @@ for (const replacement of replacements) {
 // Post-processing renames
 outputText = outputText
   .replace(/\bPaymentClassSchema\b/g, "PaymentSplitPaymentsSchema")
-  .replace(/\bPaymentClass\b/g, "PaymentSplitPayments");
+  .replace(/\bPaymentClass\b/g, "PaymentSplitPayments")
+  .replace(
+    /export const ConstraintsElementSchema = z\.object\(\{([\s\S]*?)\}\);/g,
+    "export const ConstraintsElementSchema = z.object({$1}).passthrough();"
+  )
+  .replace(
+    /export const ConstraintExpressionSchema = z\.object\(\{([\s\S]*?)\}\);/g,
+    "export const ConstraintExpressionSchema = z.object({$1}).passthrough();"
+  );
+
+// Compatibility exports for schemas referenced across SDK versions and tests
+const requiredCompatibilityExports = [
+  { alias: "TotalResponse", target: "Total" },
+  { alias: "TotalsResponse", target: "CheckoutResponseTotal" },
+  { alias: "PurpleUnitPrice", target: "UnitPrice" },
+  { alias: "PaymentTerm", target: "PurplePaymentTerm" },
+  { alias: "CheckoutCreateRequestContext", target: "Context" },
+  { alias: "CheckoutResponseMessage", target: "Message" },
+  { alias: "LookupResponseMessage", target: "Message" },
+  { alias: "CheckoutCreateRequestSignals", target: "Signals" },
+  { alias: "LookupRequestSignals", target: "Signals" },
+  { alias: "LineItemQuantityRef", target: "EventLineItem" },
+  { alias: "Provider", target: "IdentityProvider" },
+];
+
+for (const { alias, target } of requiredCompatibilityExports) {
+  if (!outputText.includes(`export const ${alias}Schema`)) {
+    outputText += `\nexport const ${alias}Schema = ${target}Schema;\nexport type ${alias} = ${target};\n`;
+  }
+}
 
 fs.writeFileSync(destinationPath, outputText);

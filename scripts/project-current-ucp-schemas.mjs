@@ -32,6 +32,7 @@ const sourceShoppingRoot = path.join(sourceSchemasRoot, "shopping");
 const sourceTypesRoot = path.join(sourceShoppingRoot, "types");
 const sourceCommonRoot = path.join(sourceSchemasRoot, "common");
 const sourceCommonTypesRoot = path.join(sourceCommonRoot, "types");
+const sourceTransportsRoot = path.join(sourceSchemasRoot, "transports");
 
 if (!fs.existsSync(sourceShoppingRoot)) {
   console.error(`Expected shopping schemas at ${sourceShoppingRoot}`);
@@ -47,10 +48,14 @@ const outputShoppingRoot = path.join(outputSchemasRoot, "shopping");
 const outputTypesRoot = path.join(outputShoppingRoot, "types");
 const outputCommonRoot = path.join(outputSchemasRoot, "common");
 const outputCommonTypesRoot = path.join(outputCommonRoot, "types");
+const outputTransportsRoot = path.join(outputSchemasRoot, "transports");
 
 fs.mkdirSync(outputDiscoveryRoot, { recursive: true });
+fs.mkdirSync(outputShoppingRoot, { recursive: true });
 fs.mkdirSync(outputTypesRoot, { recursive: true });
+fs.mkdirSync(outputCommonRoot, { recursive: true });
 fs.mkdirSync(outputCommonTypesRoot, { recursive: true });
+fs.mkdirSync(outputTransportsRoot, { recursive: true });
 
 const CUSTOM_KEYS = new Set([
   "$comment",
@@ -103,64 +108,128 @@ const topLevelVariantMap = {
   "shopping/catalog_search.json": {
     response: "shopping/catalog_search.json",
   },
+  "shopping/permalink.json": {
+    response: "shopping/permalink.json",
+  },
+  "common/location_search.json": {
+    response: "common/location_search.json",
+  },
+  "common/location_lookup.json": {
+    response: "common/location_lookup.json",
+  },
+  "common/identity_linking.json": {
+    response: "common/identity_linking.json",
+  },
+  "common/loyalty.json": {
+    response: "common/loyalty.json",
+  },
+  "common/payment_terms.json": {
+    response: "common/payment_terms.json",
+  },
+  "common/payment_ap2_mandate.json": {
+    response: "common/payment_ap2_mandate.json",
+  },
+  "common/payment_split_payments.json": {
+    response: "common/payment_split_payments.json",
+  },
+  "common/payment_authentication.json": {
+    response: "common/payment_authentication.json",
+  },
+  "profile.json": {
+    response: "profile.json",
+  },
 };
 
 const alwaysUnifiedTypeFiles = new Set([
   "account_info",
+  "actions",
   "adjustment",
+  "amenity_type",
   "amount",
   "attribution",
   "availability",
   "available_payment_instrument",
   "binding",
-  "buyer",
   "business_fulfillment_config",
+  "business_split_payments_config",
+  "buyer",
   "card_credential",
   "card_payment_instrument",
   "category",
+  "constraint_expression",
   "context",
+  "daily_hour",
   "description",
   "detail_option_value",
   "error_code",
   "error_response",
+  "exception_hour",
   "expectation",
+  "fulfillment",
   "fulfillment_available_method",
+  "fulfillment_destination",
   "fulfillment_destination_filter",
   "fulfillment_event",
   "fulfillment_group",
+  "fulfillment_method",
   "fulfillment_option",
   "fulfillment_option_base",
+  "geo",
+  "info_code",
   "input_correlation",
+  "instrument_group",
   "link",
+  "locality",
+  "location",
+  "location_destination",
+  "location_distance",
+  "location_filter",
+  "location_serves",
+  "location_summary",
+  "measure",
   "media",
   "merchant_fulfillment_config",
   "message",
   "message_error",
   "message_info",
   "message_warning",
+  "network_token_credential",
   "option_value",
   "order_confirmation",
   "order_line_item",
   "pagination",
+  "pan_credential",
+  "payment",
   "payment_credential",
   "payment_identity",
   "payment_instrument",
+  "payment_schedule",
+  "payment_term",
   "platform_fulfillment_config",
+  "policy",
   "postal_address",
   "price",
   "price_filter",
   "price_range",
   "product",
   "product_option",
+  "quantity_unit",
   "rating",
+  "request_constraints",
   "reverse_domain_name",
   "search_filters",
   "selected_option",
   "shipping_destination",
   "signals",
   "signed_amount",
+  "time_interval",
   "token_credential",
+  "total",
+  "totals",
+  "unit",
+  "unit_price",
   "variant",
+  "warning_code",
 ]);
 
 function readJson(filePath) {
@@ -267,6 +336,16 @@ function mapOutputPathForTarget(sourceRel, variant, sourceSchema) {
   if (sourceRel.startsWith("shopping/types/")) {
     const baseName = path.posix.basename(sourceRel, ".json");
     return legacyTypeOutputPath(baseName, sourceSchema, variant);
+  }
+
+  if (sourceRel.startsWith("common/types/")) {
+    const baseName = path.posix.basename(sourceRel, ".json");
+    return `common/types/${baseName}.json`;
+  }
+
+  if (sourceRel.startsWith("transports/")) {
+    const baseName = path.posix.basename(sourceRel, ".json");
+    return `transports/${baseName}.json`;
   }
 
   return topLevelOutputPath(sourceRel, variant) ?? sourceRel;
@@ -470,6 +549,40 @@ function loadSchemaCache() {
     }
   }
 
+  if (fs.existsSync(sourceCommonRoot)) {
+    for (const fileName of fs.readdirSync(sourceCommonRoot)) {
+      if (!fileName.endsWith(".json")) {
+        continue;
+      }
+
+      cache.set(
+        `common/${fileName}`,
+        readJson(path.join(sourceCommonRoot, fileName))
+      );
+    }
+  }
+
+  if (fs.existsSync(sourceTransportsRoot)) {
+    for (const fileName of fs.readdirSync(sourceTransportsRoot)) {
+      if (!fileName.endsWith(".json")) {
+        continue;
+      }
+
+      cache.set(
+        `transports/${fileName}`,
+        readJson(path.join(sourceTransportsRoot, fileName))
+      );
+    }
+  }
+
+  for (const fileName of fs.readdirSync(sourceSchemasRoot)) {
+    if (!fileName.endsWith(".json")) {
+      continue;
+    }
+
+    cache.set(fileName, readJson(path.join(sourceSchemasRoot, fileName)));
+  }
+
   return cache;
 }
 
@@ -520,7 +633,9 @@ function resolveRootRef(ref, currentDoc, rootDocs) {
   const [file, fragment = ""] = ref.split("#");
   const doc = file === "" ? currentDoc : rootDocs[file];
   if (!doc) {
-    throw new Error(`Cannot resolve $ref "${ref}" while deriving the response envelope`);
+    throw new Error(
+      `Cannot resolve $ref "${ref}" while deriving the response envelope`
+    );
   }
   let node = doc;
   for (const segment of fragment.split("/").filter(Boolean)) {
@@ -541,7 +656,11 @@ function flattenAllOf(node, currentDoc, rootDocs, acc) {
     return acc;
   }
   if (typeof node.$ref === "string") {
-    const { node: target, doc } = resolveRootRef(node.$ref, currentDoc, rootDocs);
+    const { node: target, doc } = resolveRootRef(
+      node.$ref,
+      currentDoc,
+      rootDocs
+    );
     return flattenAllOf(target, doc, rootDocs, acc);
   }
   if (Array.isArray(node.allOf)) {
@@ -621,7 +740,11 @@ function toCompatLeaf(schema) {
     }
     return leaf;
   }
-  if (schema.type === "boolean" || schema.type === "integer" || schema.type === "number") {
+  if (
+    schema.type === "boolean" ||
+    schema.type === "integer" ||
+    schema.type === "number"
+  ) {
     return { type: schema.type };
   }
   return { type: "string" };
@@ -846,7 +969,7 @@ function writeCompatibilityDiscoverySchemas() {
           },
         },
       },
-      signing_keys: {
+      keys: {
         type: "array",
         items: { $ref: "signing_key.json" },
       },
@@ -901,12 +1024,17 @@ function writeCompatibilityCoreSchemas() {
   const ucpSchema = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     $defs: {
+      base: { $ref: "../discovery/ucp_response.json" },
+      business_schema: { $ref: "../discovery/ucp_response.json" },
+      platform_schema: { $ref: "../discovery/ucp_response.json" },
       response_checkout_schema: {
         $ref: "../discovery/ucp_checkout_response.json",
       },
       response_order_schema: { $ref: "../discovery/ucp_response.json" },
       response_cart_schema: { $ref: "../discovery/ucp_response.json" },
       response_catalog_schema: { $ref: "../discovery/ucp_response.json" },
+      response_location_schema: { $ref: "../discovery/ucp_response.json" },
+      error: { $ref: "../discovery/ucp_response.json" },
     },
   };
 
@@ -914,6 +1042,12 @@ function writeCompatibilityCoreSchemas() {
 }
 
 function writeCompatibilityPaymentDataSchema() {
+  const paymentInstrumentRef = fs.existsSync(
+    path.join(outputCommonTypesRoot, "payment_instrument.json")
+  )
+    ? "../common/types/payment_instrument.json"
+    : "types/payment_instrument.json";
+
   const paymentDataSchema = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
     title: "Payment Data",
@@ -921,7 +1055,7 @@ function writeCompatibilityPaymentDataSchema() {
     required: ["payment_data"],
     properties: {
       payment_data: {
-        $ref: "types/payment_instrument.json",
+        $ref: paymentInstrumentRef,
       },
     },
   };
@@ -1011,9 +1145,38 @@ function renameExtensionCheckoutDef(projectedSchema) {
   return schema;
 }
 
+function renameLocationDefs(projectedSchema) {
+  const schema = clone(projectedSchema);
+  if (!schema.$defs) {
+    return schema;
+  }
+
+  if (schema.$defs.lookup_request) {
+    schema.$defs.location_lookup_request = schema.$defs.lookup_request;
+    delete schema.$defs.lookup_request;
+  }
+  if (schema.$defs.lookup_response) {
+    schema.$defs.location_lookup_response = schema.$defs.lookup_response;
+    delete schema.$defs.lookup_response;
+  }
+  if (schema.$defs.search_request) {
+    schema.$defs.location_search_request = schema.$defs.search_request;
+    delete schema.$defs.search_request;
+  }
+  if (schema.$defs.search_response) {
+    schema.$defs.location_search_response = schema.$defs.search_response;
+    delete schema.$defs.search_response;
+  }
+
+  return schema;
+}
+
 function writeProjectedTopLevelSchemas(schemaCache) {
   for (const [sourceRel, variants] of Object.entries(topLevelVariantMap)) {
     const sourceSchema = schemaCache.get(sourceRel);
+    if (!sourceSchema) {
+      continue;
+    }
 
     for (const [variant, outputRel] of Object.entries(variants)) {
       let projected = projectSchemaNode(sourceSchema, {
@@ -1029,11 +1192,23 @@ function writeProjectedTopLevelSchemas(schemaCache) {
       );
 
       if (
-        sourceRel === "shopping/buyer_consent.json" ||
-        sourceRel === "shopping/discount.json" ||
-        sourceRel === "shopping/fulfillment.json"
+        sourceRel.endsWith("buyer_consent.json") ||
+        sourceRel.endsWith("discount.json") ||
+        sourceRel.endsWith("fulfillment.json") ||
+        sourceRel.endsWith("payment_ap2_mandate.json") ||
+        sourceRel.endsWith("payment_split_payments.json") ||
+        sourceRel.endsWith("payment_terms.json") ||
+        sourceRel.endsWith("payment_authentication.json") ||
+        sourceRel.endsWith("loyalty.json")
       ) {
         projected = renameExtensionCheckoutDef(projected);
+      }
+
+      if (
+        sourceRel.endsWith("location_lookup.json") ||
+        sourceRel.endsWith("location_search.json")
+      ) {
+        projected = renameLocationDefs(projected);
       }
 
       writeJson(path.join(outputSchemasRoot, outputRel), projected);
@@ -1042,8 +1217,13 @@ function writeProjectedTopLevelSchemas(schemaCache) {
 }
 
 function writeCompatibilityAp2Schema(schemaCache) {
-  const sourceRel = "shopping/ap2_mandate.json";
+  const sourceRel = schemaCache.has("common/payment_ap2_mandate.json")
+    ? "common/payment_ap2_mandate.json"
+    : "shopping/ap2_mandate.json";
   const sourceSchema = schemaCache.get(sourceRel);
+  if (!sourceSchema) {
+    return;
+  }
 
   const responseProjection = projectSchemaNode(sourceSchema, {
     outputRel: "shopping/ap2_mandate.json",
@@ -1130,10 +1310,49 @@ function writeProjectedCommonTypeSchemas(schemaCache) {
       continue;
     }
     const baseName = path.posix.basename(sourceRel, ".json");
+    let targetSchema = schema;
+    if (baseName === "available_payment_instrument") {
+      targetSchema = clone(schema);
+      if (targetSchema.properties?.constraints) {
+        targetSchema.properties.constraints.minProperties = 1;
+      }
+    }
+    if (baseName === "constraint_expression") {
+      targetSchema = clone(schema);
+      targetSchema.additionalProperties = true;
+      if (targetSchema.properties?.properties?.additionalProperties?.oneOf) {
+        targetSchema.properties.properties.additionalProperties.oneOf[0] = {
+          type: "object",
+          additionalProperties: true,
+        };
+      }
+      if (targetSchema.properties?.anyOf?.items) {
+        targetSchema.properties.anyOf.items = {
+          type: "object",
+          additionalProperties: true,
+        };
+      }
+    }
+    writeProjectedFile(
+      targetSchema,
+      sourceRel,
+      `common/types/${baseName}.json`,
+      "response",
+      schemaCache
+    );
+  }
+}
+
+function writeProjectedTransportsSchemas(schemaCache) {
+  for (const [sourceRel, schema] of schemaCache.entries()) {
+    if (!sourceRel.startsWith("transports/")) {
+      continue;
+    }
+    const baseName = path.posix.basename(sourceRel, ".json");
     writeProjectedFile(
       schema,
       sourceRel,
-      `common/types/${baseName}.json`,
+      `transports/${baseName}.json`,
       "response",
       schemaCache
     );
@@ -1146,6 +1365,7 @@ writeCompatibilityDiscoverySchemas();
 writeCompatibilityCoreSchemas();
 writeProjectedTypeSchemas(schemaCache);
 writeProjectedCommonTypeSchemas(schemaCache);
+writeProjectedTransportsSchemas(schemaCache);
 writeProjectedTopLevelSchemas(schemaCache);
 writeCompatibilityPaymentDataSchema();
 writeCompatibilityAp2Schema(schemaCache);
