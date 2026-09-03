@@ -38,6 +38,7 @@ const {
   PaymentHandlerResponseSchema,
   AvailablePaymentInstrumentSchema,
   DescriptionSchema,
+  LocationServesSchema,
   OrderConfirmationSchema,
   LineItemQuantityRefSchema,
   AdjustmentLineItemSchema,
@@ -386,6 +387,38 @@ test("DescriptionSchema enforces minProperties and retains additional properties
   assert.deepEqual(DescriptionSchema.parse({ other: "Description" }), {
     other: "Description",
   });
+});
+
+// --- LocationServesSchema: exactly one service-target form ------------------
+// location_serves.json declares minProperties: 1 AND maxProperties: 1 —
+// "A one-entry map ... The Platform MUST supply exactly one target form."
+
+test("LocationServesSchema rejects an empty service-target map (minProperties)", () => {
+  assert.ok(rejects(LocationServesSchema, {}));
+});
+
+test("LocationServesSchema accepts a single target representation", () => {
+  assert.ok(
+    accepts(LocationServesSchema, {
+      point: { latitude: 37.77, longitude: -122.42 },
+    })
+  );
+  assert.ok(accepts(LocationServesSchema, { "com.example/area": "bay-area" }));
+});
+
+test("LocationServesSchema rejects two target representations (maxProperties)", () => {
+  assert.ok(
+    rejects(LocationServesSchema, {
+      point: { latitude: 37.77, longitude: -122.42 },
+      "com.example/area": "bay-area",
+    })
+  );
+  assert.ok(
+    rejects(LocationServesSchema, {
+      "com.example/area": "bay-area",
+      "com.example/radius_km": 10,
+    })
+  );
 });
 
 test("MediaSchema rejects a url that is not a URL (format: uri)", () => {

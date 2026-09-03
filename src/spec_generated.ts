@@ -1898,6 +1898,9 @@ export const LocationServesSchema = z
   .catchall(z.any())
   .refine((value) => Object.keys(value).length >= 1, {
     message: "Object must contain at least 1 property(ies) (minProperties)",
+  })
+  .refine((value) => Object.keys(value).length <= 1, {
+    message: "Object must contain at most 1 property(ies) (maxProperties)",
   });
 export type LocationServes = z.infer<typeof LocationServesSchema>;
 
