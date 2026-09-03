@@ -280,6 +280,8 @@ export const A2ASchema = z.object({
     .url(),
 });
 export type A2A = z.infer<typeof A2ASchema>;
+export const PermalinkCapabilityBusinessConfigSchema = A2ASchema;
+export type PermalinkCapabilityBusinessConfig = A2A;
 
 export const EmbeddedSchema = z.object({
   schema: z.string().url(),
@@ -1194,6 +1196,8 @@ export const PurpleInstrumentGroupSchema = z.object({
 export type PurpleInstrumentGroup = z.infer<typeof PurpleInstrumentGroupSchema>;
 export const AllowedCombinationElementSchema = PurpleInstrumentGroupSchema;
 export type AllowedCombinationElement = PurpleInstrumentGroup;
+export const InstrumentGroupSchema = PurpleInstrumentGroupSchema;
+export type InstrumentGroup = PurpleInstrumentGroup;
 
 export const PaymentInstrumentSplitPaymentsSchema = z.object({
   billing_address: BillingAddressClassSchema.optional(),
@@ -3132,6 +3136,217 @@ export const UcpDiscoveryProfileSchema = z.object({
 });
 export type UcpDiscoveryProfile = z.infer<typeof UcpDiscoveryProfileSchema>;
 
+export const PermalinkCapabilityPlatformSchema = z.object({
+  config: z.record(z.string(), z.any()).optional(),
+  id: z.string().optional(),
+  schema: z.string().url(),
+  spec: z.string().url(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type PermalinkCapabilityPlatform = z.infer<
+  typeof PermalinkCapabilityPlatformSchema
+>;
+
+export const PermalinkCapabilityResponseSchema = z.object({
+  config: z.record(z.string(), z.any()).optional(),
+  id: z.string().optional(),
+  schema: z.string().url().optional(),
+  spec: z.string().url().optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type PermalinkCapabilityResponse = z.infer<
+  typeof PermalinkCapabilityResponseSchema
+>;
+
+export const FulfillmentCapabilityPlatformSchema = z.object({
+  config: PlatformFulfillmentConfigSchema.optional(),
+  id: z.string().optional(),
+  schema: z.string().url(),
+  spec: z.string().url(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type FulfillmentCapabilityPlatform = z.infer<
+  typeof FulfillmentCapabilityPlatformSchema
+>;
+
+export const PermalinkCapabilityBusinessSchema = z.object({
+  config: PermalinkCapabilityBusinessConfigSchema,
+  id: z.string().optional(),
+  schema: z.string().url(),
+  spec: z.string().url().optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type PermalinkCapabilityBusiness = z.infer<
+  typeof PermalinkCapabilityBusinessSchema
+>;
+
+export const IdentityLinkingBusinessConfigSchema = z.object({
+  providers: z.record(z.string(), z.array(IdentityProviderSchema)).optional(),
+  scopes: z.record(z.string(), ScopePolicySchema),
+});
+export type IdentityLinkingBusinessConfig = z.infer<
+  typeof IdentityLinkingBusinessConfigSchema
+>;
+
+export const SplitPaymentsCapabilityBusinessSchema = z.object({
+  config: BusinessSplitPaymentsConfigSchema.optional(),
+  id: z.string().optional(),
+  schema: z.string().url(),
+  spec: z.string().url().optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type SplitPaymentsCapabilityBusiness = z.infer<
+  typeof SplitPaymentsCapabilityBusinessSchema
+>;
+
+export const FulfillmentCapabilityBusinessSchema = z.object({
+  config: BusinessFulfillmentConfigSchema.optional(),
+  id: z.string().optional(),
+  schema: z.string().url(),
+  spec: z.string().url().optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type FulfillmentCapabilityBusiness = z.infer<
+  typeof FulfillmentCapabilityBusinessSchema
+>;
+
+export const IdentityLinkingBusinessSchema = z.object({
+  config: IdentityLinkingBusinessConfigSchema,
+  id: z.string().optional(),
+  schema: z.string().url(),
+  spec: z.string().url().optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+});
+export type IdentityLinkingBusiness = z.infer<
+  typeof IdentityLinkingBusinessSchema
+>;
+
 export const TotalResponseSchema = TotalSchema;
 export type TotalResponse = Total;
 
@@ -3164,3 +3379,6 @@ export type LineItemQuantityRef = EventLineItem;
 
 export const ProviderSchema = IdentityProviderSchema;
 export type Provider = IdentityProvider;
+
+export const IdentityLinkingPlatformSchema = PermalinkCapabilityPlatformSchema;
+export type IdentityLinkingPlatform = PermalinkCapabilityPlatform;
