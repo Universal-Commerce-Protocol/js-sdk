@@ -65,9 +65,11 @@ RAW_CONSTRAINT_SCHEMA_DIR="$SPEC_DIR/schemas"
 PROJECTED_CONSTRAINT_SCHEMA_DIR=""
 
 TMP_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/ucp-spec-generated.XXXXXX.ts")"
+TMP_DECLARATIONS="$(mktemp "${TMPDIR:-/tmp}/ucp-declarations-generated.XXXXXX.ts")"
+DECLARATION_MANIFEST="$(mktemp "${TMPDIR:-/tmp}/ucp-declarations-manifest.XXXXXX.json")"
 PROJECTED_SPEC_DIR=""
 cleanup() {
-  rm -f "$TMP_OUTPUT"
+  rm -f "$TMP_OUTPUT" "$TMP_DECLARATIONS" "$DECLARATION_MANIFEST"
   if [[ -n "$PROJECTED_SPEC_DIR" ]]; then
     rm -rf "$PROJECTED_SPEC_DIR"
   fi
@@ -194,13 +196,62 @@ fi
 
 QUICKTYPE_ARGS+=(-o "$TMP_OUTPUT")
 
-if [[ -x "./node_modules/.bin/quicktype" ]]; then
-  ./node_modules/.bin/quicktype "${QUICKTYPE_ARGS[@]}"
-else
-  npx quicktype "${QUICKTYPE_ARGS[@]}"
+run_quicktype() {
+  if [[ -x "./node_modules/.bin/quicktype" ]]; then
+    ./node_modules/.bin/quicktype "$@"
+  else
+    npx quicktype "$@"
+  fi
+}
+
+run_quicktype "${QUICKTYPE_ARGS[@]}"
+
+# Capability DECLARATION schemas. A capability may redeclare the
+# platform_schema / business_schema / response_schema roles that capability.json
+# defines, under a $defs key equal to its own reverse domain name. Those
+# declarations are not reachable from any root schema, so handing the file to
+# quicktype whole generates nothing for them and exits 0 -- the omission is
+# silent. Discovered by shape (scripts/discover-declaration-srcs.mjs), so a
+# capability added to the spec later generates with no edit here.
+#
+# They are generated in their OWN quicktype invocation and merged in, never
+# added to the shared invocation above: quicktype assigns names globally across
+# one invocation, so new sources in the shared pool re-pick disambiguating
+# names for unrelated existing types -- a breaking public API change. The
+# merge appends only new declarations, proves colliding names identical, and
+# fails loudly otherwise (scripts/merge-generated-fragment.mjs).
+#
+# Read from the RAW tree for the same reason the constraint injector does: the
+# projection prunes `$defs` that nothing reachable references, so the projected
+# copies of these declarations point at a `capability.json` that is not emitted
+# and at `ucp.json#/$defs/entity` which the projection drops. The authored tree
+# still has both, so the declaration refs resolve there.
+DECLARATION_ARGS=()
+if [[ -d "$RAW_CONSTRAINT_SCHEMA_DIR" ]]; then
+  while IFS= read -r declaration_src; do
+    [[ -n "$declaration_src" ]] || continue
+    DECLARATION_ARGS+=(--src "$RAW_CONSTRAINT_SCHEMA_DIR/$declaration_src")
+  done < <(node scripts/discover-declaration-srcs.mjs --manifest "$DECLARATION_MANIFEST" "$RAW_CONSTRAINT_SCHEMA_DIR")
+fi
+
+if (( ${#DECLARATION_ARGS[@]} )); then
+  run_quicktype --lang typescript-zod --src-lang schema "${DECLARATION_ARGS[@]}" -o "$TMP_DECLARATIONS"
+  node scripts/merge-generated-fragment.mjs "$TMP_OUTPUT" "$TMP_DECLARATIONS"
 fi
 
 node scripts/normalize-generated-schemas.mjs "$TMP_OUTPUT" src/spec_generated.ts
+
+# quicktype structurally unifies declarations that are identical modulo
+# annotations, keeping one title's name, and exits 0 when it drops a schema.
+# Guarantee every discovered declaration stays addressable: alias unified-away
+# names to their surviving structural sibling, and fail the build if any
+# declaration produced nothing (scripts/ensure-declaration-exports.mjs).
+# Runs UNCONDITIONALLY, and is given the schema root so it can re-derive the
+# declaration set independently of discovery. Guarding this on "did discovery
+# find anything" would make it blind to discovery finding nothing, which is the
+# precise failure quicktype's exit 0 produces.
+node scripts/ensure-declaration-exports.mjs \
+  "$DECLARATION_MANIFEST" src/spec_generated.ts "$RAW_CONSTRAINT_SCHEMA_DIR"
 
 # Re-attach the value constraints (minimum, pattern, type: integer, ...) that
 # quicktype's typescript-zod target drops. The raw schema pass preserves
