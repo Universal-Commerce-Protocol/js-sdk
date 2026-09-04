@@ -124,6 +124,7 @@ const CONSTRAINT_KEYS = [
   "maxItems",
   "uniqueItems",
   "minProperties",
+  "maxProperties",
   "format",
 ];
 
@@ -344,6 +345,8 @@ function describeConstraint(propertyNode, file) {
   if (eff.uniqueItems === true) descriptor.uniqueItems = true;
   if (eff.minProperties !== undefined)
     descriptor.minProperties = eff.minProperties;
+  if (eff.maxProperties !== undefined)
+    descriptor.maxProperties = eff.maxProperties;
   const propertyNamesPattern = resolvePropertyNamesPattern(
     propertyNode.propertyNames,
     file
@@ -472,6 +475,11 @@ const propertyNamesIndex = new Map();
 // retained before counting, matching JSON Schema's default extra-key behavior.
 // setKey -> Map(signature -> descriptor).
 const minPropertiesIndex = new Map();
+
+// Object-level `maxProperties`, keyed the same way as minPropertiesIndex so a
+// map bounded on both sides (e.g. LocationServes' one-entry shape) renders both
+// refinements against the same key count.
+const maxPropertiesIndex = new Map();
 
 // Object-level numeric constraints guarded by a simple discriminator condition.
 // Every resolved object shape records either its canonical rule list or an empty
@@ -611,6 +619,35 @@ function recordMinProperties(node, properties) {
     minPropertiesIndex.set(setKey, new Map());
   }
   minPropertiesIndex.get(setKey).set(signature, descriptor);
+}
+
+function recordMaxProperties(node, properties) {
+  let maxProperties = node.maxProperties;
+  let additionalProperties = node.additionalProperties;
+  if (maxProperties === undefined && Array.isArray(node.allOf)) {
+    for (const sub of node.allOf) {
+      if (sub && typeof sub === "object" && sub.maxProperties !== undefined) {
+        maxProperties = sub.maxProperties;
+        if (additionalProperties === undefined) {
+          additionalProperties = sub.additionalProperties;
+        }
+        break;
+      }
+    }
+  }
+  if (maxProperties === undefined) {
+    return;
+  }
+  const setKey = Object.keys(properties).sort().join(",");
+  const descriptor = {
+    maximum: maxProperties,
+    retainAdditionalProperties: additionalProperties !== false,
+  };
+  const signature = JSON.stringify(descriptor);
+  if (!maxPropertiesIndex.has(setKey)) {
+    maxPropertiesIndex.set(setKey, new Map());
+  }
+  maxPropertiesIndex.get(setKey).set(signature, descriptor);
 }
 
 function numericBounds(node) {
@@ -1011,6 +1048,7 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
     );
     recordPropertyNames(node, resolvedObject.properties, file);
     recordMinProperties(node, resolvedObject.properties);
+    recordMaxProperties(node, resolvedObject.properties);
     recordConditionalRules(node, resolvedObject.properties);
   }
   recordVariantUnionRules(node, file);
@@ -1120,6 +1158,19 @@ for (const [setKey, bySignature] of minPropertiesIndex) {
     ambiguous.push({
       setKey,
       name: "<minProperties>",
+      count: bySignature.size,
+    });
+  }
+}
+
+const resolvedMaxProperties = new Map();
+for (const [setKey, bySignature] of maxPropertiesIndex) {
+  if (bySignature.size === 1) {
+    resolvedMaxProperties.set(setKey, [...bySignature.values()][0]);
+  } else {
+    ambiguous.push({
+      setKey,
+      name: "<maxProperties>",
       count: bySignature.size,
     });
   }
@@ -1321,6 +1372,37 @@ function renderMinPropertiesRefine(minimum, retainAdditionalProperties) {
   );
 }
 
+function renderMaxPropertiesRefine(maximum, retainAdditionalProperties) {
+  return (
+    (retainAdditionalProperties ? `.catchall(z.any())` : "") +
+    `.refine((value) => Object.keys(value).length <= ${maximum}, ` +
+    `{ message: "Object must contain at most ${maximum} property(ies) (maxProperties)" })`
+  );
+}
+
+/**
+ * Splice the object-level property-count bounds as one chained edit. A
+ * `.refine(...)` result no longer exposes `.catchall`, so two independently
+ * rendered bounds that each prepend it would throw at parse time; one leading
+ * `.catchall(z.any())` is shared by both refinements.
+ */
+function renderObjectCountRefines(minDescriptor, maxDescriptor) {
+  const retainAdditionalProperties =
+    minDescriptor?.retainAdditionalProperties ??
+    maxDescriptor?.retainAdditionalProperties;
+  return (
+    (retainAdditionalProperties ? `.catchall(z.any())` : "") +
+    (minDescriptor
+      ? `.refine((value) => Object.keys(value).length >= ${minDescriptor.minimum}, ` +
+        `{ message: "Object must contain at least ${minDescriptor.minimum} property(ies) (minProperties)" })`
+      : "") +
+    (maxDescriptor
+      ? `.refine((value) => Object.keys(value).length <= ${maxDescriptor.maximum}, ` +
+        `{ message: "Object must contain at most ${maxDescriptor.maximum} property(ies) (maxProperties)" })`
+      : "")
+  );
+}
+
 function renderConditionalRefine(rules) {
   const normalized = rules.map((rule) => ({
     kind: rule.kind,
@@ -1395,6 +1477,7 @@ function methodsFor(descriptor, baseKind) {
     descriptor.containsGroups !== undefined;
   const isRecord =
     descriptor.minProperties !== undefined ||
+    descriptor.maxProperties !== undefined ||
     descriptor.propertyNamesPattern !== undefined;
 
   if (isNumeric) {
@@ -1429,6 +1512,9 @@ function methodsFor(descriptor, baseKind) {
     if (baseKind !== "record") return null;
     if (descriptor.minProperties !== undefined) {
       methods.push(renderMinPropertiesRefine(descriptor.minProperties, false));
+    }
+    if (descriptor.maxProperties !== undefined) {
+      methods.push(renderMaxPropertiesRefine(descriptor.maxProperties, false));
     }
     if (descriptor.propertyNamesPattern !== undefined) {
       methods.push(renderRecordKeyPattern(descriptor.propertyNamesPattern));
@@ -1705,6 +1791,7 @@ const report = {
   unionBranchesInjected: 0,
   propertyNamesInjected: 0,
   minPropertiesInjected: 0,
+  maxPropertiesInjected: 0,
   conditionalsInjected: 0,
   sharedQuantityInjected: 0,
   sharedMeasureInjected: 0,
@@ -1737,6 +1824,7 @@ function handleObjectLiteral(objectLiteral) {
   const resolvedUnionProperties = resolvedStringArrayUnions.get(setKey);
   const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
   const minPropertiesDescriptor = resolvedMinProperties.get(setKey);
+  const maxPropertiesDescriptor = resolvedMaxProperties.get(setKey);
   // If/then rules and variant-union rules render through the same conditional
   // superRefine; cross-index conflicts were already resolved to neither.
   const conditionalRules =
@@ -1746,6 +1834,7 @@ function handleObjectLiteral(objectLiteral) {
     !resolvedUnionProperties &&
     !propertyNamesDescriptor &&
     !minPropertiesDescriptor &&
+    !maxPropertiesDescriptor &&
     !conditionalRules
   ) {
     return;
@@ -1872,20 +1961,26 @@ function handleObjectLiteral(objectLiteral) {
       matchedAny = true;
     }
   }
-  if (minPropertiesDescriptor) {
+  if (minPropertiesDescriptor || maxPropertiesDescriptor) {
     const objectCall = objectLiteral.parent;
     if (
       objectCall &&
       ts.isCallExpression(objectCall) &&
       !objectAlreadyConstrained(objectCall)
     ) {
-      const text = renderMinPropertiesRefine(
-        minPropertiesDescriptor.minimum,
-        minPropertiesDescriptor.retainAdditionalProperties
+      const text = renderObjectCountRefines(
+        minPropertiesDescriptor,
+        maxPropertiesDescriptor
       );
       edits.push({ pos: objectCall.getEnd(), text });
-      report.minPropertiesInjected += 1;
-      report.injections.push(`${setKey} :: <minProperties> ${text}`);
+      if (minPropertiesDescriptor) {
+        report.minPropertiesInjected += 1;
+        report.injections.push(`${setKey} :: <minProperties> ${text}`);
+      }
+      if (maxPropertiesDescriptor) {
+        report.maxPropertiesInjected += 1;
+        report.injections.push(`${setKey} :: <maxProperties> ${text}`);
+      }
       matchedAny = true;
     } else if (objectCall && objectAlreadyConstrained(objectCall)) {
       report.fieldsAlreadyDone += 1;
@@ -2057,6 +2152,7 @@ process.stdout.write(
     `${report.unionBranchesInjected} string-array union branch constraint(s); ` +
     `${report.propertyNamesInjected} propertyNames key-check(s); ` +
     `${report.minPropertiesInjected} object minProperties check(s); ` +
+    `${report.maxPropertiesInjected} object maxProperties check(s); ` +
     `${report.conditionalsInjected} conditional check(s); ` +
     `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
     `${report.sharedMeasureInjected} shared-measure split edit(s); ` +
