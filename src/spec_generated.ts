@@ -265,7 +265,24 @@ export type ConstraintExpressionProperty = ConstraintsProperty;
 
 export const CapabilityDiscoverySchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
-  extends: z.string().optional(),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
   name: z.string(),
   schema: z.string().url(),
   spec: z.string().url(),

@@ -750,6 +750,29 @@ function toCompatLeaf(schema) {
   return { type: "string" };
 }
 
+// Rewrite every `$ref` inside a cloned source node so it resolves from the
+// discovery/ output directory, which sits beside schemas/ rather than inside it.
+// A raw clone keeps refs written relative to schemas/ (e.g.
+// "common/types/reverse_domain_name.json") and generation dies with
+// "Could not fetch schema" the moment such a node is emitted into discovery/.
+// Keeping the node otherwise intact is the point: the reverse-domain pattern and
+// minItems stay attached, so quicktype emits the real constraint instead of a
+// bare union that then depends on the injector finding it by property set.
+function rewriteDiscoveryRefs(node) {
+  if (Array.isArray(node)) return node.map(rewriteDiscoveryRefs);
+  if (!node || typeof node !== "object") return node;
+  const out = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "$ref" && typeof value === "string" && !value.startsWith("#")) {
+      const [file, fragment = ""] = value.split("#");
+      out.$ref = fragment ? `../schemas/${file}#${fragment}` : `../schemas/${file}`;
+    } else {
+      out[key] = rewriteDiscoveryRefs(value);
+    }
+  }
+  return out;
+}
+
 // Rewrite an array item $ref from its source (schemas-root-relative) path to the
 // path a discovery/ compat file uses to reach the projected type tree.
 function rewriteItemRefForDiscovery(items) {
@@ -833,6 +856,22 @@ function writeCompatibilityDiscoverySchemas() {
   const version = ucpSchema.$defs.version;
   const entityProperties = ucpSchema.$defs.entity.properties;
   const serviceEndpoint = serviceSchema.$defs.base.allOf[1].properties.endpoint;
+  // capability.json declares `extends` once, on $defs/base, as a oneOf of a
+  // reverse-domain-pattern string or a non-empty array of the same -- and both
+  // $defs/platform_schema (this discovery projection) and $defs/response_schema
+  // (capabilityResponse, below) inherit it via allOf from that shared base.
+  // The clone is emitted into discovery/, which sits beside schemas/ rather than
+  // inside it, so its `$ref: common/types/reverse_domain_name.json` does not
+  // resolve there and generation dies with "Could not fetch schema".
+  // rewriteDiscoveryRefs repoints those refs and leaves the node otherwise
+  // intact, which is the point: the pattern and minItems stay attached, so
+  // quicktype emits the constraint directly. Flattening it through toCompatLeaf
+  // instead would resolve the ref but drop both, because the constraint would
+  // then have to be reattached by inject-schema-constraints.mjs, whose index is
+  // keyed by the containing object property set, and this object differs from
+  // capabilityResponse by one property name.
+  const capabilityExtends =
+    capabilitySchema.$defs.base.allOf[1].properties.extends;
 
   const signingKey = {
     $schema: "https://json-schema.org/draft/2020-12/schema",
@@ -879,7 +918,7 @@ function writeCompatibilityDiscoverySchemas() {
     required: ["name", "schema", "spec", "version"],
     properties: {
       config: { type: "object", additionalProperties: true },
-      extends: { type: "string" },
+      extends: rewriteDiscoveryRefs(clone(capabilityExtends)),
       name: { type: "string" },
       schema: clone(entityProperties.schema),
       spec: clone(entityProperties.spec),
