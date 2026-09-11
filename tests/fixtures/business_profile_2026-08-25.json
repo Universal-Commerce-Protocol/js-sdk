@@ -1,0 +1,131 @@
+{
+  "ucp": {
+    "version": "2026-08-25",
+    "services": {
+      "dev.ucp.shopping": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/overview/",
+          "transport": "rest",
+          "endpoint": "https://business.example.com/ucp/v1",
+          "schema": "https://ucp.dev/2026-08-25/services/shopping/rest.openapi.json"
+        },
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/overview/",
+          "transport": "mcp",
+          "endpoint": "https://business.example.com/ucp/mcp",
+          "schema": "https://ucp.dev/2026-08-25/services/shopping/mcp.openrpc.json"
+        },
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/overview/",
+          "transport": "a2a",
+          "endpoint": "https://business.example.com/.well-known/agent-card.json"
+        },
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/overview/",
+          "transport": "embedded",
+          "schema": "https://ucp.dev/2026-08-25/services/shopping/embedded.openrpc.json"
+        }
+      ]
+    },
+    "capabilities": {
+      "dev.ucp.shopping.checkout": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/checkout",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/checkout.json"
+        }
+      ],
+      "dev.ucp.shopping.fulfillment": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/fulfillment",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/fulfillment.json",
+          "extends": "dev.ucp.shopping.checkout"
+        }
+      ],
+      "dev.ucp.shopping.discount": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/shopping/extensions/discount",
+          "schema": "https://ucp.dev/2026-08-25/schemas/shopping/discount.json",
+          "extends": "dev.ucp.shopping.checkout"
+        }
+      ],
+      "dev.ucp.common.identity_linking": [
+        {
+          "version": "2026-08-25",
+          "spec": "https://ucp.dev/2026-08-25/specification/common/identity-linking/",
+          "schema": "https://ucp.dev/2026-08-25/schemas/common/identity_linking.json",
+          "config": {
+            "providers": {
+              "com.example.idp": [
+                {
+                  "type": "oauth2",
+                  "auth_url": "https://accounts.example.com/"
+                }
+              ]
+            },
+            "scopes": {
+              "dev.ucp.shopping.order:read": {},
+              "dev.ucp.shopping.order:manage": {}
+            }
+          }
+        }
+      ]
+    },
+    "payment_handlers": {
+      "com.example.processor_tokenizer": [
+        {
+          "id": "processor_tokenizer",
+          "version": "2026-08-25",
+          "spec": "https://example.com/specs/payments/processor_tokenizer",
+          "schema": "https://example.com/specs/payments/merchant_tokenizer.json",
+          "available_instruments": [
+            {
+              "type": "card",
+              "constraints": {
+                "properties": {
+                  "brand": {
+                    "enum": ["visa", "mastercard", "amex"]
+                  }
+                }
+              }
+            }
+          ],
+          "config": {
+            "type": "CARD",
+            "tokenization_specification": {
+              "type": "PUSH",
+              "parameters": {
+                "token_retrieval_url": "https://api.psp.example.com/v1/tokens"
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "keys": [
+    {
+      "kid": "poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U",
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs",
+      "use": "sig",
+      "alg": "EdDSA"
+    },
+    {
+      "kid": "business_2025",
+      "kty": "EC",
+      "crv": "P-256",
+      "x": "qIVYZVLCrPZHGHjP17CTW0_-D9Lfw0EkjqF7xB4FivA",
+      "y": "Mc4nN9LTDOBhfoUeg8Ye9WedFRhnZXZJA12Qp0zZ6F0",
+      "use": "sig",
+      "alg": "ES256"
+    }
+  ]
+}

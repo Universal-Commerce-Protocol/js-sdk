@@ -608,7 +608,9 @@ test("CapabilityDiscoverySchema accepts valid extends names", () => {
 });
 
 test("UcpSchema enforces the discovery version pattern", () => {
-  const discovery = { capabilities: [], services: {} };
+  // Spec shape (ucp.json#/$defs/business_schema): registries are records keyed
+  // by reverse domain name, services and payment_handlers are required.
+  const discovery = { services: {}, payment_handlers: {} };
   assert.ok(rejects(UcpSchema, { ...discovery, version: "not-a-date" }));
   assert.ok(accepts(UcpSchema, { ...discovery, version: "2026-04-08" }));
 });
@@ -938,8 +940,8 @@ test("UcpDiscoveryProfileSchema emits keys array per RFC 7517", () => {
   assert.ok(
     accepts(UcpDiscoveryProfileSchema, {
       ucp: {
-        capabilities: [],
         services: {},
+        payment_handlers: {},
         version: "2026-08-25",
       },
       keys: [{ kid: "key-1", kty: "OKP" }],

@@ -3,6 +3,14 @@ import * as z from "zod";
 export const UseSchema = z.enum(["enc", "sig"]);
 export type Use = z.infer<typeof UseSchema>;
 
+export const TransportSchema = z.enum(["a2a", "embedded", "mcp", "rest"]);
+export type Transport = z.infer<typeof TransportSchema>;
+
+export const UcpCheckoutResponseStatusSchema = z.enum(["error", "success"]);
+export type UcpCheckoutResponseStatus = z.infer<
+  typeof UcpCheckoutResponseStatusSchema
+>;
+
 // Content format, default = plain.
 
 export const ContentTypeSchema = z.enum(["markdown", "plain"]);
@@ -41,14 +49,6 @@ export const CheckoutResponseStatusSchema = z.enum([
 ]);
 export type CheckoutResponseStatus = z.infer<
   typeof CheckoutResponseStatusSchema
->;
-
-export const TransportSchema = z.enum(["a2a", "embedded", "mcp", "rest"]);
-export type Transport = z.infer<typeof TransportSchema>;
-
-export const UcpCheckoutResponseStatusSchema = z.enum(["error", "success"]);
-export type UcpCheckoutResponseStatus = z.infer<
-  typeof UcpCheckoutResponseStatusSchema
 >;
 
 // Adjustment status.
@@ -233,6 +233,33 @@ export type NetworkTokenCredentialType = z.infer<
 export const PanCredentialTypeSchema = z.enum(["pan"]);
 export type PanCredentialType = z.infer<typeof PanCredentialTypeSchema>;
 
+export const CapabilityDiscoverySchema = z.object({
+  config: z.record(z.string(), z.any()).optional(),
+  extends: z
+    .union([
+      z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+            )
+        )
+        .min(1),
+      z
+        .string()
+        .regex(
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+        ),
+    ])
+    .optional(),
+  name: z.string(),
+  schema: z.string().url(),
+  spec: z.string().url(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type CapabilityDiscovery = z.infer<typeof CapabilityDiscoverySchema>;
+
 export const SigningKeySchema = z.object({
   alg: z.string().optional(),
   crv: z.string().optional(),
@@ -263,7 +290,7 @@ export type ConstraintsProperty = z.infer<typeof ConstraintsPropertySchema>;
 export const ConstraintExpressionPropertySchema = ConstraintsPropertySchema;
 export type ConstraintExpressionProperty = ConstraintsProperty;
 
-export const CapabilityDiscoverySchema = z.object({
+export const CapabilityResponseSchema = z.object({
   config: z.record(z.string(), z.any()).optional(),
   extends: z
     .union([
@@ -283,12 +310,23 @@ export const CapabilityDiscoverySchema = z.object({
         ),
     ])
     .optional(),
-  name: z.string(),
-  schema: z.string().url(),
-  spec: z.string().url(),
+  id: z.string().optional(),
+  schema: z.string().url().optional(),
+  spec: z.string().url().optional(),
   version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
-export type CapabilityDiscovery = z.infer<typeof CapabilityDiscoverySchema>;
+export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
+
+export const ServiceResponseSchema = z.object({
+  config: z.record(z.string(), z.any()).optional(),
+  endpoint: z.string().url().optional(),
+  id: z.string().optional(),
+  schema: z.string().url().optional(),
+  spec: z.string().url().optional(),
+  transport: TransportSchema,
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type ServiceResponse = z.infer<typeof ServiceResponseSchema>;
 
 export const A2ASchema = z.object({
   endpoint: z
@@ -711,44 +749,6 @@ export const TotalLineSchema = z.object({
 export type TotalLine = z.infer<typeof TotalLineSchema>;
 export const TotalLineClassSchema = TotalLineSchema;
 export type TotalLineClass = TotalLine;
-
-export const CapabilityResponseSchema = z.object({
-  config: z.record(z.string(), z.any()).optional(),
-  extends: z
-    .union([
-      z
-        .array(
-          z
-            .string()
-            .regex(
-              /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
-            )
-        )
-        .min(1),
-      z
-        .string()
-        .regex(
-          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
-        ),
-    ])
-    .optional(),
-  id: z.string().optional(),
-  schema: z.string().url().optional(),
-  spec: z.string().url().optional(),
-  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
-export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
-
-export const ServiceResponseSchema = z.object({
-  config: z.record(z.string(), z.any()).optional(),
-  endpoint: z.string().url().optional(),
-  id: z.string().optional(),
-  schema: z.string().url().optional(),
-  spec: z.string().url().optional(),
-  transport: TransportSchema,
-  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
-export type ServiceResponse = z.infer<typeof ServiceResponseSchema>;
 
 export const EventLineItemSchema = z.object({
   id: z.string(),
@@ -2136,13 +2136,6 @@ export type AvailablePaymentInstrument = z.infer<
   typeof AvailablePaymentInstrumentSchema
 >;
 
-export const UcpSchema = z.object({
-  capabilities: z.array(CapabilityDiscoverySchema),
-  services: z.record(z.string(), UcpServiceSchema),
-  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
-export type Ucp = z.infer<typeof UcpSchema>;
-
 export const LineItemCreateRequestSchema = z.object({
   item: ItemCreateRequestSchema,
   quantity: z.number().int().gte(1).lte(9007199254740991),
@@ -2388,6 +2381,55 @@ export type PaymentHandlerResponse = z.infer<
   typeof PaymentHandlerResponseSchema
 >;
 
+export const UcpSchema = z.object({
+  capabilities: z
+    .record(z.string(), z.array(CapabilityResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
+            key
+          )
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
+    .optional(),
+  map_order: z.record(z.string(), z.array(z.string())).optional(),
+  payment_handlers: z
+    .record(z.string(), z.array(PaymentHandlerResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
+            key
+          )
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    ),
+  services: z
+    .record(z.string(), z.array(ServiceResponseSchema))
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) =>
+          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
+            key
+          )
+        ),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    ),
+  status: UcpCheckoutResponseStatusSchema.optional(),
+  supported_versions: z
+    .record(z.string(), z.string())
+    .refine(
+      (value) =>
+        Object.keys(value).every((key) => /^\d{4}-\d{2}-\d{2}$/.test(key)),
+      { message: "Record keys must match the required pattern (propertyNames)" }
+    )
+    .optional(),
+  version: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+});
+export type Ucp = z.infer<typeof UcpSchema>;
+
 export const CheckoutCreateRequestSchema = z.object({
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
@@ -2420,7 +2462,7 @@ export const UcpCheckoutResponseSchema = z.object({
       { message: "Record keys must match the required pattern (propertyNames)" }
     )
     .optional(),
-  map_order: z.string().optional(),
+  map_order: z.record(z.string(), z.array(z.string())).optional(),
   payment_handlers: z
     .record(z.string(), z.array(PaymentHandlerResponseSchema))
     .refine(
@@ -2462,7 +2504,7 @@ export const UcpResponseSchema = z.object({
       { message: "Record keys must match the required pattern (propertyNames)" }
     )
     .optional(),
-  map_order: z.string().optional(),
+  map_order: z.record(z.string(), z.array(z.string())).optional(),
   payment_handlers: z
     .record(z.string(), z.array(PaymentHandlerResponseSchema))
     .refine(

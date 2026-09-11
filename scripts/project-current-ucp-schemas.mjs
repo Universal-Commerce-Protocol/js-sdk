@@ -828,6 +828,21 @@ function buildResponseEnvelopeSchema(ucpSchema, extraRequired = []) {
         type: "object",
         additionalProperties: { type: "array", items: { $ref: compat } },
       };
+    } else if (
+      typeof schema?.$ref === "string" &&
+      schema.$ref.startsWith("#/$defs/") &&
+      ucpSchema.$defs[schema.$ref.slice("#/$defs/".length)]?.type === "object"
+    ) {
+      // An object valued local def (map_order): keep its map shape instead of
+      // collapsing the $ref to a string, which rejected the map_order example
+      // in the overview.
+      const def = ucpSchema.$defs[schema.$ref.slice("#/$defs/".length)];
+      properties[name] = {
+        type: "object",
+        additionalProperties: def.additionalProperties
+          ? toCompatLeaf(def.additionalProperties)
+          : true,
+      };
     } else {
       properties[name] = toCompatLeaf(schema);
     }
@@ -837,6 +852,49 @@ function buildResponseEnvelopeSchema(ucpSchema, extraRequired = []) {
     title: "UCP Response",
     type: "object",
     required: [...(base.required ?? []), ...extraRequired],
+    properties,
+  };
+}
+
+// The `ucp` member of the discovery profile, DERIVED from ucp.json#/$defs/business_schema
+// (allOf: base + overlay). base contributes every registry (services,
+// capabilities, payment_handlers) as an object keyed by reverse domain name
+// whose values are entity arrays, plus version/status/map_order, requiring
+// only version; the business overlay adds required services and
+// payment_handlers, and supported_versions. Registry items map to the
+// per-entity RESPONSE compat shape exactly as the response envelope does.
+// Replaces the hand written node that carried the withdrawn 2026-01-11 shape
+// (capabilities as a flat array and required, services as single objects, no
+// payment_handlers), which rejected the business profile example the specification
+// publishes. No title: the type keeps the property-derived name (UcpSchema), so
+// the existing export survives.
+function buildBusinessProfileUcpSchema(ucpSchema) {
+  const overlay = ucpSchema.$defs.business_schema.allOf[1];
+  const envelope = buildResponseEnvelopeSchema(
+    ucpSchema,
+    overlay.required ?? []
+  );
+  const { title: _title, ...derived } = envelope;
+  const properties = { ...derived.properties };
+  for (const [name, schema] of Object.entries(overlay.properties ?? {})) {
+    // Registry properties are already modeled by the envelope (the overlay only
+    // re-points their item refs); carry the additions of the overlay through.
+    if (name in properties) continue;
+    // An open map with a typed value (supported_versions: version -> profile
+    // URI) keeps that value type; toCompatLeaf would widen it to any.
+    properties[name] =
+      schema?.type === "object" &&
+      schema.additionalProperties &&
+      typeof schema.additionalProperties === "object"
+        ? {
+            type: "object",
+            additionalProperties: toCompatLeaf(schema.additionalProperties),
+          }
+        : toCompatLeaf(schema);
+  }
+  return {
+    ...derived,
+    required: [...new Set(derived.required)],
     properties,
   };
 }
@@ -1012,21 +1070,7 @@ function writeCompatibilityDiscoverySchemas() {
         type: "array",
         items: { $ref: "signing_key.json" },
       },
-      ucp: {
-        type: "object",
-        required: ["capabilities", "services", "version"],
-        properties: {
-          capabilities: {
-            type: "array",
-            items: { $ref: "capability.json" },
-          },
-          services: {
-            type: "object",
-            additionalProperties: { $ref: "ucp_service.json" },
-          },
-          version: clone(version),
-        },
-      },
+      ucp: buildBusinessProfileUcpSchema(ucpSchema),
     },
   };
 
