@@ -1280,15 +1280,98 @@ export const McpToolCallSchema = z.object({
 });
 export type McpToolCall = z.infer<typeof McpToolCallSchema>;
 
-export const EcKeysCarryCrvXYSchema = z.object({
-  alg: z.string().optional(),
-  crv: z.string().optional(),
-  kid: z.string(),
-  kty: z.string(),
-  use: z.string().optional(),
-  x: z.string().optional(),
-  y: z.string().optional(),
-});
+export const EcKeysCarryCrvXYSchema = z
+  .object({
+    alg: z.string().optional(),
+    crv: z.string().optional(),
+    kid: z.string(),
+    kty: z.string(),
+    use: z.string().optional(),
+    x: z.string().optional(),
+    y: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    for (const rule of [
+      {
+        kind: "required",
+        discriminator: "kty",
+        values: ["EC"],
+        negated: false,
+        required: ["crv", "x", "y"],
+        field: null,
+        format: null,
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+      {
+        kind: "required",
+        discriminator: "kty",
+        values: ["OKP"],
+        negated: false,
+        required: ["crv", "x"],
+        field: null,
+        format: null,
+        target: null,
+        minimum: null,
+        maximum: null,
+        exclusiveMinimum: null,
+        exclusiveMaximum: null,
+      },
+    ]) {
+      const record = value as Record<string, unknown>;
+      const discriminatorVal = record[rule.discriminator];
+      if (discriminatorVal === undefined) continue;
+      const matches = (rule.values as readonly unknown[]).includes(
+        discriminatorVal
+      );
+      if (rule.negated ? matches : !matches) continue;
+      if (rule.kind === "required") {
+        for (const field of rule.required) {
+          if (!(field in record))
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: [field],
+              message: "Field is required by a conditional constraint",
+            });
+        }
+        continue;
+      }
+      if (rule.kind === "format") {
+        const field = rule.field;
+        const fieldValue = field === null ? undefined : record[field];
+        if (rule.format === "uri" && typeof fieldValue === "string") {
+          try {
+            new URL(fieldValue);
+          } catch {
+            if (field !== null)
+              ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                path: [field],
+                message: "Value must be a valid URI",
+              });
+          }
+        }
+        continue;
+      }
+      if (rule.target === null) continue;
+      const target = record[rule.target];
+      if (typeof target !== "number") continue;
+      const invalid =
+        (rule.minimum !== null && target < rule.minimum) ||
+        (rule.maximum !== null && target > rule.maximum) ||
+        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
+        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
+      if (invalid)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [rule.target],
+          message: "Value violates a conditional numeric constraint",
+        });
+    }
+  });
 export type EcKeysCarryCrvXY = z.infer<typeof EcKeysCarryCrvXYSchema>;
 
 export const AdjustmentLineItemClassSchema = z.object({

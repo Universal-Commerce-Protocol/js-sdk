@@ -664,13 +664,31 @@ function numericBounds(node) {
   return Object.keys(descriptor).length ? descriptor : null;
 }
 
+// Annotation keywords carry no assertion, so a branch that merely labels itself
+// is still a branch this recorder can model. profile.json titles every
+// jwk_public_key branch ("EC keys carry crv, x, y" and so on), and treating the
+// title as an unmodellable extra keyword disqualified all five.
+const CONDITIONAL_BRANCH_ANNOTATIONS = new Set([
+  "title",
+  "description",
+  "$comment",
+  "examples",
+  "default",
+  "deprecated",
+]);
+
 function describeConditionalRule(branch, properties) {
   const condition = branch?.if;
   const consequence = branch?.then;
   if (
     !condition ||
     !consequence ||
-    Object.keys(branch).some((key) => key !== "if" && key !== "then") ||
+    Object.keys(branch).some(
+      (key) =>
+        key !== "if" &&
+        key !== "then" &&
+        !CONDITIONAL_BRANCH_ANNOTATIONS.has(key)
+    ) ||
     Object.keys(condition).some(
       (key) => key !== "properties" && key !== "required"
     ) ||
@@ -796,12 +814,19 @@ function recordConditionalRules(node, properties) {
   for (const branch of branches) {
     const rule = describeConditionalRule(branch, properties);
     if (!rule) {
+      // A branch this recorder cannot model is skipped, not fatal. Dropping the
+      // whole list because one branch is unmodellable discarded the branches
+      // that ARE expressible: profile.json's jwk_public_key states five, two of
+      // them plain `required` consequences, and the three `alg` const branches
+      // took those two down with them. Every `if`/`then` only adds constraints,
+      // so keeping the expressible subset can only enforce more, never reject
+      // something the schema permits.
       unsupported = true;
-      break;
+      continue;
     }
     rules.push(rule);
   }
-  if (unsupported) rules.length = 0;
+  void unsupported;
   rules.sort((left, right) =>
     JSON.stringify(left).localeCompare(JSON.stringify(right))
   );
