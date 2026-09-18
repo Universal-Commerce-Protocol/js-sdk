@@ -165,15 +165,8 @@ const alwaysUnifiedTypeFiles = new Set([
   "error_response",
   "exception_hour",
   "expectation",
-  "fulfillment",
-  "fulfillment_available_method",
-  "fulfillment_destination",
   "fulfillment_destination_filter",
   "fulfillment_event",
-  "fulfillment_group",
-  "fulfillment_method",
-  "fulfillment_option",
-  "fulfillment_option_base",
   "geo",
   "info_code",
   "input_correlation",
@@ -181,7 +174,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "link",
   "locality",
   "location",
-  "location_destination",
   "location_distance",
   "location_filter",
   "location_serves",
@@ -219,7 +211,6 @@ const alwaysUnifiedTypeFiles = new Set([
   "reverse_domain_name",
   "search_filters",
   "selected_option",
-  "shipping_destination",
   "signals",
   "signed_amount",
   "time_interval",
@@ -387,6 +378,7 @@ function projectSchemaNode(node, context) {
   }
 
   const output = {};
+  const omittedProperties = new Set();
 
   for (const [key, value] of Object.entries(node)) {
     if (CUSTOM_KEYS.has(key)) {
@@ -425,6 +417,7 @@ function projectSchemaNode(node, context) {
 
         if (omitForRequest || omitForResponse) {
           required.delete(propertyName);
+          omittedProperties.add(propertyName);
           continue;
         }
 
@@ -457,7 +450,98 @@ function projectSchemaNode(node, context) {
     output[key] = projectSchemaNode(value, context);
   }
 
+  restoreBranchProperties(output, omittedProperties, context);
+
   return output;
+}
+
+// quicktype emits an object's `properties` and ignores `if`/`then`/`else`. A
+// root property's `ucp_request`/`ucp_response` rule is the default for every
+// discriminator value, and a conditional branch may override it for one
+// value: fulfillment_method.json declares `destinations` `ucp_request: omit`
+// at the root and redeclares it `optional` inside the `type: shipping`
+// branch. The projection above honours the root rule and drops the property,
+// the branch's re-declaration is projected but never generated, and z.object
+// then strips a create/update request's shipping address from parsed input
+// SILENTLY.
+//
+// So, once a node's own properties are projected, a property the root rule
+// omitted for this variant that a projected `then`/`else` consequence still
+// declares is restored to the root, OPTIONAL (a branch can never make a
+// property unconditionally required) and typed by the branch. The flat target
+// cannot say "only when type is shipping": the restored property is exact for
+// the branch that admits it and lenient for the others, which admit nothing,
+// so a pickup method carrying shipping-shaped destinations is accepted (and
+// kept) rather than rejected. Two branches redeclaring one property
+// differently is refused loudly rather than guessed.
+//
+// Deliberately limited to properties the projection itself removed. A
+// property the root never declares (identity_linking.json's provider declares
+// `auth_url` and `required_claims` only inside its branches) is left alone:
+// that is a quicktype limitation independent of the variant rules, and the
+// capability declaration fragments are generated from the raw tree, so
+// restoring it here alone would make the two generations of one declaration
+// disagree and fail the merge.
+function restoreBranchProperties(output, omittedProperties, context) {
+  if (omittedProperties.size === 0) {
+    return;
+  }
+
+  const consequences = [];
+  const collect = (node) => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) {
+      return;
+    }
+    if (!("if" in node)) {
+      return;
+    }
+    for (const key of ["then", "else"]) {
+      const consequence = node[key];
+      if (
+        consequence &&
+        typeof consequence === "object" &&
+        consequence.properties &&
+        typeof consequence.properties === "object"
+      ) {
+        consequences.push(consequence.properties);
+      }
+    }
+  };
+
+  collect(output);
+  if (Array.isArray(output.allOf)) {
+    for (const part of output.allOf) {
+      collect(part);
+    }
+  }
+
+  const restored = new Map();
+  for (const properties of consequences) {
+    for (const [name, schema] of Object.entries(properties)) {
+      if (!omittedProperties.has(name)) {
+        continue;
+      }
+      const serialized = JSON.stringify(schema);
+      const seen = restored.get(name);
+      if (seen !== undefined && seen !== serialized) {
+        throw new Error(
+          `${context.sourceRel}: property "${name}" is declared differently ` +
+            `by two conditional branches in the ${context.variant} variant; ` +
+            `refusing to restore one of them to the root.`
+        );
+      }
+      restored.set(name, serialized);
+    }
+  }
+
+  if (restored.size === 0) {
+    return;
+  }
+
+  output.properties = { ...(output.properties ?? {}) };
+  for (const [name, serialized] of restored) {
+    output.properties[name] = JSON.parse(serialized);
+  }
 }
 
 function titleSuffixForOutput(outputRel) {
@@ -765,7 +849,9 @@ function rewriteDiscoveryRefs(node) {
   for (const [key, value] of Object.entries(node)) {
     if (key === "$ref" && typeof value === "string" && !value.startsWith("#")) {
       const [file, fragment = ""] = value.split("#");
-      out.$ref = fragment ? `../schemas/${file}#${fragment}` : `../schemas/${file}`;
+      out.$ref = fragment
+        ? `../schemas/${file}#${fragment}`
+        : `../schemas/${file}`;
     } else {
       out[key] = rewriteDiscoveryRefs(value);
     }
