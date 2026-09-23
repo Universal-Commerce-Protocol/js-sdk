@@ -357,10 +357,16 @@ function describeConstraint(propertyNode, file) {
     descriptor.minProperties = eff.minProperties;
   if (eff.maxProperties !== undefined)
     descriptor.maxProperties = eff.maxProperties;
-  const propertyNamesPattern = resolvePropertyNamesPattern(
-    propertyNode.propertyNames,
-    file
-  );
+  let propertyNames = propertyNode.propertyNames;
+  if (propertyNames === undefined && Array.isArray(propertyNode.allOf)) {
+    for (const sub of propertyNode.allOf) {
+      if (sub && typeof sub === "object" && sub.propertyNames !== undefined) {
+        propertyNames = sub.propertyNames;
+        break;
+      }
+    }
+  }
+  const propertyNamesPattern = resolvePropertyNamesPattern(propertyNames, file);
   if (propertyNamesPattern !== null)
     descriptor.propertyNamesPattern = propertyNamesPattern;
   const containsGroups = collectContainsGroups(propertyNode, file);
