@@ -150,10 +150,10 @@ test("ExpectationLineItemSchema accepts a positive integer quantity", () => {
   assert.ok(accepts(ExpectationLineItemSchema, { id: "li_1", quantity: 1 }));
 });
 
-// --- Unit price measure/reference: contextual split -------------------------
-// Both objects have {unit,value}, but the pinned schema declares measure.value
-// as `number` and reference.value as `integer`. The generated schemas must not
-// let quicktype's shared-object merge apply the integer rule to both contexts.
+// --- Shared Measure: preserve signed integer vs. unit-price positive split --
+// `common/types/measure.json` (and `adjustment.json`'s `line_items[].measure`)
+// defines `value` as a signed safe integer, whereas `shopping/types/unit_price.json`
+// narrows both `measure.value` and `reference.value` with `minimum: 1` via `allOf`.
 
 const unitPrice = (measureValue, referenceValue) => ({
   amount: 125,
@@ -162,14 +162,37 @@ const unitPrice = (measureValue, referenceValue) => ({
   reference: { display_text: "kg", unit: "kg", value: referenceValue },
 });
 
-test("unit price measure accepts fractional and integer values", () => {
-  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(0.5, 100)));
-  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(1, 100)));
+test("shared Measure requires an integer value and accepts zero or signed values", () => {
+  assert.ok(
+    rejects(AdjustmentLineItemSchema, {
+      id: "li_1",
+      quantity: 0,
+      measure: { display_text: "kg", unit: "kg", value: 0.5 },
+    })
+  );
+  assert.ok(
+    accepts(AdjustmentLineItemSchema, {
+      id: "li_1",
+      quantity: 0,
+      measure: { display_text: "kg", unit: "kg", value: 0 },
+    })
+  );
+  assert.ok(
+    accepts(AdjustmentLineItemSchema, {
+      id: "li_1",
+      quantity: 0,
+      measure: { display_text: "kg", unit: "kg", value: -5 },
+    })
+  );
 });
 
-test("unit price reference requires an integer value", () => {
-  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(0.5, 0.5)));
-  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(0.5, 100)));
+test("unit price measure and reference require positive integer values", () => {
+  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(0.5, 100)));
+  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(1, 0.5)));
+  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(0, 100)));
+  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(1, 0)));
+  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(-1, 100)));
+  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(1, 100)));
 });
 
 // --- Projected request constraints -----------------------------------------
@@ -608,7 +631,9 @@ test("CapabilityDiscoverySchema accepts valid extends names", () => {
 });
 
 test("UcpSchema enforces the discovery version pattern", () => {
-  const discovery = { capabilities: [], services: {} };
+  // Spec shape (ucp.json#/$defs/business_schema): registries are records keyed
+  // by reverse domain name, services and payment_handlers are required.
+  const discovery = { services: {}, payment_handlers: {} };
   assert.ok(rejects(UcpSchema, { ...discovery, version: "not-a-date" }));
   assert.ok(accepts(UcpSchema, { ...discovery, version: "2026-04-08" }));
 });
@@ -938,8 +963,8 @@ test("UcpDiscoveryProfileSchema emits keys array per RFC 7517", () => {
   assert.ok(
     accepts(UcpDiscoveryProfileSchema, {
       ucp: {
-        capabilities: [],
         services: {},
+        payment_handlers: {},
         version: "2026-08-25",
       },
       keys: [{ kid: "key-1", kty: "OKP" }],
