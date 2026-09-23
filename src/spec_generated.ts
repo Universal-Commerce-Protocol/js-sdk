@@ -1485,11 +1485,11 @@ export const ListPriceRangeClassSchema = PriceRangeSchema;
 export type ListPriceRangeClass = PriceRange;
 
 export const RequestConstraintsPropertySchema = z.object({
-  anyOf: z.array(z.record(z.string(), z.any())).optional(),
+  anyOf: z.array(z.record(z.string(), z.any())).min(1).optional(),
   properties: z.record(z.string(), ConstraintsPropertySchema).optional(),
-  required: z.array(z.string()).optional(),
+  required: z.array(z.string()).min(1).optional(),
   const: z.any().optional(),
-  enum: z.array(z.any()).optional(),
+  enum: z.array(z.any()).min(1).optional(),
 });
 export type RequestConstraintsProperty = z.infer<
   typeof RequestConstraintsPropertySchema
@@ -1996,7 +1996,7 @@ export type OrderPaymentWithAcceptedTerm = z.infer<
 export const CheckoutWithPaymentTermsPaymentSchema = z.object({
   instruments: z.array(SelectedPaymentInstrumentSchema).optional(),
   selected_term_id: z.string().optional(),
-  terms: z.array(PurplePaymentTermSchema).optional(),
+  terms: z.array(PurplePaymentTermSchema).min(1).optional(),
 });
 export type CheckoutWithPaymentTermsPayment = z.infer<
   typeof CheckoutWithPaymentTermsPaymentSchema
@@ -2081,7 +2081,7 @@ export type MethodElement = FulfillmentMethodCreateRequest;
 
 export const BusinessSplitPaymentsConfigSchema = z.object({
   allowed_combinations: z
-    .array(z.array(AllowedCombinationElementSchema))
+    .array(z.array(AllowedCombinationElementSchema).min(1))
     .min(1),
 });
 export type BusinessSplitPaymentsConfig = z.infer<
@@ -2517,7 +2517,7 @@ export type CheckoutWithBuyerConsentUpdateRequest = z.infer<
 >;
 
 export const CheckoutWithBuyerConsentResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerWithConsentResponseSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2564,7 +2564,7 @@ export type CheckoutWithBuyerConsentResponse = z.infer<
 >;
 
 export const CheckoutWithDiscountResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2631,7 +2631,7 @@ export type CheckoutWithFulfillmentUpdateRequest = z.infer<
 >;
 
 export const CheckoutWithFulfillmentResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2679,7 +2679,7 @@ export type CheckoutWithFulfillmentResponse = z.infer<
 >;
 
 export const CartResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2721,7 +2721,7 @@ export const CartResponseSchema = z.object({
 export type CartResponse = z.infer<typeof CartResponseSchema>;
 
 export const CheckoutWithCartResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2769,7 +2769,7 @@ export type CheckoutWithCartResponse = z.infer<
 >;
 
 export const LookupResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   messages: z.array(MessageSchema).optional(),
   policies: z.array(PolicySchema).optional(),
   products: z.array(ProductElementSchema),
@@ -2778,7 +2778,7 @@ export const LookupResponseSchema = z.object({
 export type LookupResponse = z.infer<typeof LookupResponseSchema>;
 
 export const GetProductResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   messages: z.array(MessageSchema).optional(),
   policies: z.array(PolicySchema).optional(),
   product: ProductClassSchema,
@@ -2787,7 +2787,7 @@ export const GetProductResponseSchema = z.object({
 export type GetProductResponse = z.infer<typeof GetProductResponseSchema>;
 
 export const SearchResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   messages: z.array(MessageSchema).optional(),
   pagination: SearchResponsePaginationSchema.optional(),
   policies: z.array(PolicySchema).optional(),
@@ -2797,7 +2797,7 @@ export const SearchResponseSchema = z.object({
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
 export const CheckoutWithAp2MandateSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2864,7 +2864,7 @@ export type LocationSearchResponse = z.infer<
 >;
 
 export const CheckoutWithLoyaltySchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2910,7 +2910,7 @@ export const CheckoutWithLoyaltySchema = z.object({
 export type CheckoutWithLoyalty = z.infer<typeof CheckoutWithLoyaltySchema>;
 
 export const CheckoutWithPaymentTermsSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -2957,7 +2957,7 @@ export type CheckoutWithPaymentTerms = z.infer<
 >;
 
 export const CheckoutWithSplitPaymentsSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),
@@ -3004,7 +3004,7 @@ export type CheckoutWithSplitPayments = z.infer<
 >;
 
 export const A2AUcpMessageEnvelopeSchema = z.object({
-  extensions: z.array(ExtensionElementSchema).optional(),
+  extensions: z.array(ExtensionElementSchema).min(1).optional(),
   id: z.union([z.number(), z.null(), z.string()]).optional(),
   jsonrpc: JsonrpcSchema.optional(),
   method: A2AUcpMessageEnvelopeMethodSchema.optional(),
@@ -3042,7 +3042,7 @@ export type UcpDiscoveryProfilePayment = z.infer<
 >;
 
 export const CheckoutResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema)).optional(),
+  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
   attribution: z.record(z.string(), z.string()).optional(),
   buyer: BuyerClassSchema.optional(),
   context: ContextClassSchema.optional(),

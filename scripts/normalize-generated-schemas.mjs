@@ -13,7 +13,10 @@ if (!inputPath || !outputPath) {
 
 const sourcePath = path.resolve(inputPath);
 const destinationPath = path.resolve(outputPath);
-const sourceText = fs.readFileSync(sourcePath, "utf8");
+const sourceText = fs
+  .readFileSync(sourcePath, "utf8")
+  .replace(/\bCenterClassSchema\b/g, "GeoClassSchema")
+  .replace(/\bCenterClass\b/g, "GeoClass");
 const sourceFile = ts.createSourceFile(
   sourcePath,
   sourceText,
