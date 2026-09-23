@@ -30,6 +30,11 @@ const canonicalNames = new Map([
   ["AllocationElement", "Allocation"],
   ["AppliedAllocation", "Allocation"],
   ["BillingAddressClass", "PostalAddress"],
+  // location_destination.json composes common/types/location_summary.json,
+  // which the projection never splits, so its request variants collapse onto
+  // the summary's shape; keep the summary the declaration they alias.
+  ["BusinessLocationDestinationCreateRequest", "LocationSummary"],
+  ["BusinessLocationDestinationUpdateRequest", "LocationSummary"],
   ["BuyerClass", "Buyer"],
   ["CardPaymentInstrument", "PaymentInstrument"],
   ["CheckoutUpdateRequestPayment", "PaymentSelection"],
@@ -37,7 +42,6 @@ const canonicalNames = new Map([
   ["FluffyConsent", "Consent"],
   ["FulfillmentDestinationRequestElement", "FulfillmentDestinationRequest"],
   ["GroupClass", "FulfillmentGroupUpdateRequest"],
-  ["GroupElement", "FulfillmentGroupCreateRequest"],
   ["IdentityClass", "PaymentIdentity"],
   ["ItemClass", "ItemReference"],
   ["LineItemClass", "LineItemUpdateRequest"],
@@ -46,7 +50,6 @@ const canonicalNames = new Map([
   ["LinkElement", "Link"],
   ["Mcp", "SchemaEndpoint"],
   ["MessageElement", "Message"],
-  ["MethodElement", "FulfillmentMethodCreateRequest"],
   ["OrderClass", "OrderConfirmation"],
   ["OrderLineItemQuantity", "LineItemQuantity"],
   ["PaymentCreateRequest", "PaymentSelection"],
@@ -229,6 +232,30 @@ for (const replacement of replacements) {
     outputText.slice(replacement.end);
 }
 
+// quicktype names an anonymous inline object after its property when that name
+// is free. Splitting types/fulfillment.json into Create Request / Update
+// Request / Response variants freed the bare title `Fulfillment`, and
+// order.json's inline `fulfillment` object ({ events, expectations }) took it,
+// so the existing FulfillmentSchema export kept compiling while silently
+// changing meaning. Pin that inline object to the name it carried while the
+// title was occupied (FulfillmentClass); `Fulfillment` then stays the checkout
+// container through the compatibility alias below. Guarded on the two blocks
+// differing after alias resolution: identical ones were unified above.
+const fulfillmentBlock = schemaBlocks.get("Fulfillment");
+const fulfillmentResponseBlock = schemaBlocks.get("FulfillmentResponse");
+if (
+  fulfillmentBlock &&
+  fulfillmentResponseBlock &&
+  !schemaBlocks.has("FulfillmentClass") &&
+  fulfillmentBlock.resolvedInitializer !==
+    fulfillmentResponseBlock.resolvedInitializer
+) {
+  outputText = outputText
+    .replace(/\bFulfillmentSchema\b/g, "FulfillmentClassSchema")
+    .replace(/^export type Fulfillment = /gm, "export type FulfillmentClass = ")
+    .replace(/ = Fulfillment;$/gm, " = FulfillmentClass;");
+}
+
 // Post-processing renames
 outputText = outputText
   .replace(/\bPaymentClassSchema\b/g, "PaymentSplitPaymentsSchema")
@@ -255,6 +282,41 @@ const requiredCompatibilityExports = [
   { alias: "LookupRequestSignals", target: "Signals" },
   { alias: "LineItemQuantityRef", target: "EventLineItem" },
   { alias: "Provider", target: "IdentityProvider" },
+  // The fulfillment family was generated as one "unified" shape per type,
+  // written with response rules, until the projector split it per variant
+  // (js-sdk#77). Each unified name, and the quicktype element names that
+  // aliased it, keeps resolving to the shape it always had: the response.
+  {
+    alias: "AvailableMethodElement",
+    target: "FulfillmentAvailableMethodResponse",
+  },
+  {
+    alias: "BusinessLocationDestination",
+    target: "BusinessLocationDestinationResponse",
+  },
+  {
+    alias: "BusinessLocationDestinationType",
+    target: "BusinessLocationDestinationResponseType",
+  },
+  { alias: "DestinationElement", target: "FulfillmentDestinationResponse" },
+  { alias: "Fulfillment", target: "FulfillmentResponse" },
+  {
+    alias: "FulfillmentAvailableMethod",
+    target: "FulfillmentAvailableMethodResponse",
+  },
+  { alias: "FulfillmentDestination", target: "FulfillmentDestinationResponse" },
+  { alias: "FulfillmentGroup", target: "FulfillmentGroupResponse" },
+  { alias: "FulfillmentMethod", target: "FulfillmentMethodResponse" },
+  { alias: "FulfillmentOption", target: "FulfillmentOptionResponse" },
+  { alias: "FulfillmentOptionBase", target: "FulfillmentOptionBaseResponse" },
+  { alias: "FulfillmentOptionElement", target: "FulfillmentOptionResponse" },
+  { alias: "GroupElement", target: "FulfillmentGroupResponse" },
+  { alias: "MethodElement", target: "FulfillmentMethodResponse" },
+  { alias: "ShippingDestination", target: "ShippingDestinationResponse" },
+  {
+    alias: "ShippingDestinationType",
+    target: "ShippingDestinationCreateRequestType",
+  },
 ];
 
 for (const { alias, target } of requiredCompatibilityExports) {
