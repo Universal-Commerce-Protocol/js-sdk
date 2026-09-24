@@ -490,6 +490,18 @@ const minPropertiesIndex = new Map();
 // refinements against the same key count.
 const maxPropertiesIndex = new Map();
 
+// Object-level `dependentRequired` (subject -> fields that must accompany it),
+// which quicktype drops entirely: time_interval.json allows an empty fragment
+// but requires `opens` and `closes` together, and fulfillment_method.json
+// requires `type` whenever `destinations` is present. Keyed by the resolved
+// property set like the other object-level rules. Every resolved object records
+// its (possibly empty) rule list, so a shape that occurs both with and without
+// the rule is ambiguous and left untouched; a rule naming a field outside the
+// property set (a request projection omitted it) is inapplicable rather than
+// malformed and is skipped, never approximated. setKey -> Map(signature ->
+// rules).
+const dependentRequiredIndex = new Map();
+
 // Object-level numeric constraints guarded by a simple discriminator condition.
 // Every resolved object shape records either its canonical rule list or an empty
 // list, so a shape used both with and without conditions becomes ambiguous and
@@ -643,6 +655,80 @@ function recordMaxProperties(node, properties) {
     maxPropertiesIndex.set(setKey, new Map());
   }
   maxPropertiesIndex.get(setKey).set(signature, descriptor);
+}
+
+/**
+ * Every `dependentRequired` map that applies to an object instance: the node's
+ * own, plus those of the schemas it composes via `$ref` and `allOf` (JSON
+ * Schema applies each part's keyword to the same instance), the way
+ * resolveObject follows the same edges for `properties`.
+ */
+function collectDependentRequired(node, file, seen = new Set(), depth = 0) {
+  if (!node || typeof node !== "object" || depth > 32) {
+    return [];
+  }
+  if (typeof node.$ref === "string") {
+    const key = `${file}|${node.$ref}`;
+    if (seen.has(key)) {
+      return [];
+    }
+    seen.add(key);
+    const resolved = resolveRef(node.$ref, file);
+    return collectDependentRequired(
+      resolved.node,
+      resolved.file,
+      seen,
+      depth + 1
+    );
+  }
+  const maps = [];
+  if (Array.isArray(node.allOf)) {
+    for (const sub of node.allOf) {
+      maps.push(
+        ...collectDependentRequired(sub, file, new Set(seen), depth + 1)
+      );
+    }
+  }
+  if (
+    node.dependentRequired &&
+    typeof node.dependentRequired === "object" &&
+    !Array.isArray(node.dependentRequired)
+  ) {
+    maps.push(node.dependentRequired);
+  }
+  return maps;
+}
+
+function recordDependentRequired(node, properties, file) {
+  const dependentsBySubject = new Map();
+  for (const map of collectDependentRequired(node, file)) {
+    for (const [subject, dependents] of Object.entries(map)) {
+      if (!Array.isArray(dependents) || !(subject in properties)) {
+        continue;
+      }
+      const fields = dependents.filter(
+        (field) =>
+          typeof field === "string" && field !== subject && field in properties
+      );
+      // A rule whose dependents are not all present on this object was
+      // written for a shape this projection does not carry; skip it whole.
+      if (fields.length !== dependents.length || fields.length === 0) {
+        continue;
+      }
+      const merged = dependentsBySubject.get(subject) ?? new Set();
+      for (const field of fields) merged.add(field);
+      dependentsBySubject.set(subject, merged);
+    }
+  }
+  const rules = [...dependentsBySubject]
+    .map(([subject, fields]) => [subject, [...fields].sort()])
+    .sort(([left], [right]) => left.localeCompare(right));
+  const setKey = Object.keys(properties).sort().join(",");
+  const signature = JSON.stringify(rules);
+  if (!dependentRequiredIndex.has(setKey)) {
+    dependentRequiredIndex.set(setKey, new Map());
+  }
+  dependentRequiredIndex.get(setKey).set(signature, rules);
 }
 
 function numericBounds(node) {
@@ -1070,6 +1156,7 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
     recordMinProperties(node, resolvedObject.properties);
     recordMaxProperties(node, resolvedObject.properties);
     recordConditionalRules(node, resolvedObject.properties);
+    recordDependentRequired(node, resolvedObject.properties, file);
   }
   recordVariantUnionRules(node, file);
   if (node.properties && typeof node.properties === "object") {
@@ -1206,6 +1293,22 @@ for (const [setKey, bySignature] of conditionalIndex) {
     if (rules.length) resolvedConditionals.set(setKey, rules);
   } else {
     ambiguous.push({ setKey, name: "<conditional>", count: bySignature.size });
+  }
+}
+
+// dependentRequired resolves like the if/then rules: every occurrence of a
+// property set must agree on the exact rule list, empty lists included.
+const resolvedDependentRequired = new Map();
+for (const [setKey, bySignature] of dependentRequiredIndex) {
+  if (bySignature.size === 1) {
+    const rules = [...bySignature.values()][0];
+    if (rules.length) resolvedDependentRequired.set(setKey, rules);
+  } else {
+    ambiguous.push({
+      setKey,
+      name: "<dependentRequired>",
+      count: bySignature.size,
+    });
   }
 }
 
@@ -1490,6 +1593,26 @@ function renderConditionalRefine(rules) {
     `if (invalid) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [rule.target], ` +
     `message: "Value violates a conditional numeric constraint" });` +
     `}})`
+  );
+}
+
+/**
+ * `.superRefine(...)` enforcing `dependentRequired`. Presence is judged on the
+ * parsed value as it would serialize: a key set to `undefined` is absent on
+ * the wire, so it neither triggers a rule nor satisfies one.
+ */
+function renderDependentRequiredRefine(rules) {
+  return (
+    `.superRefine((value, ctx) => {` +
+    `const record = value as Record<string, unknown>;` +
+    `for (const [subject, dependents] of ${JSON.stringify(rules)} as ` +
+    `[string, string[]][]) {` +
+    `if (record[subject] === undefined) continue;` +
+    `for (const field of dependents) {` +
+    `if (record[field] === undefined) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
+    `path: [field], message: ` +
+    "`Field is required when ${subject} is present (dependentRequired)` });" +
+    `}}})`
   );
 }
 
@@ -1827,7 +1950,8 @@ function objectAlreadyConstrained(objectCall) {
   return false;
 }
 
-function conditionalAlreadyConstrained(objectCall) {
+/** End position of the method chain wrapping a `z.object({...})` call. */
+function objectChainEnd(objectCall) {
   let outer = objectCall;
   while (
     outer.parent &&
@@ -1838,8 +1962,22 @@ function conditionalAlreadyConstrained(objectCall) {
   ) {
     outer = outer.parent.parent;
   }
-  const slice = sourceText.slice(objectCall.getEnd(), outer.getEnd());
-  return /conditional (?:numeric )?constraint/.test(slice);
+  return outer.getEnd();
+}
+
+/** Source text of the method chain wrapping a `z.object({...})` call. */
+function objectChainText(objectCall) {
+  return sourceText.slice(objectCall.getEnd(), objectChainEnd(objectCall));
+}
+
+function conditionalAlreadyConstrained(objectCall) {
+  return /conditional (?:numeric )?constraint/.test(
+    objectChainText(objectCall)
+  );
+}
+
+function dependentRequiredAlreadyConstrained(objectCall) {
+  return /\(dependentRequired\)/.test(objectChainText(objectCall));
 }
 
 // --- Parse the generated file and compute edits ----------------------------
@@ -1862,6 +2000,8 @@ const report = {
   minPropertiesInjected: 0,
   maxPropertiesInjected: 0,
   conditionalsInjected: 0,
+  dependentRequiredInjected: 0,
+  dependentRequiredVacuous: 0,
   sharedQuantityInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
@@ -1882,6 +2022,79 @@ function objectLiteralPropertySet(objectLiteral) {
   return names;
 }
 
+// Top-level `export const Name = <initializer>` bindings, so a property whose
+// initializer is a bare reference (`address: BillingAddressClassSchema`) is
+// judged by the schema it names.
+let topLevelInitializers = null;
+function topLevelInitializer(name) {
+  if (!topLevelInitializers) {
+    topLevelInitializers = new Map();
+    for (const statement of sourceFile.statements) {
+      if (!ts.isVariableStatement(statement)) continue;
+      for (const declaration of statement.declarationList.declarations) {
+        if (ts.isIdentifier(declaration.name) && declaration.initializer) {
+          topLevelInitializers.set(
+            declaration.name.text,
+            declaration.initializer
+          );
+        }
+      }
+    }
+  }
+  return topLevelInitializers.get(name);
+}
+
+/**
+ * Whether a generated property initializer accepts a missing key, judged on
+ * the zod chain as written: `.optional()`, `.nullish()`, `.default()`,
+ * `.catch()` or `.or()` anywhere in the chain, an undefined-accepting base
+ * (`z.any`, `z.unknown`, `z.undefined`, `z.void`, `z.optional`), or a union
+ * with such a member. Anything unrecognised counts as accepting undefined, so
+ * a rule stays live rather than being dropped on a guess.
+ */
+function acceptsUndefined(expr, depth = 0) {
+  if (!expr || depth > 32) return true;
+  if (ts.isParenthesizedExpression(expr)) {
+    return acceptsUndefined(expr.expression, depth + 1);
+  }
+  if (ts.isIdentifier(expr)) {
+    const initializer = topLevelInitializer(expr.text);
+    return initializer ? acceptsUndefined(initializer, depth + 1) : true;
+  }
+  if (
+    !ts.isCallExpression(expr) ||
+    !ts.isPropertyAccessExpression(expr.expression)
+  ) {
+    return true;
+  }
+  const method = expr.expression.name.text;
+  const receiver = expr.expression.expression;
+  if (ts.isIdentifier(receiver) && receiver.text === "z") {
+    if (["any", "unknown", "undefined", "void", "optional"].includes(method)) {
+      return true;
+    }
+    if (method === "union" || method === "discriminatedUnion") {
+      const options = expr.arguments[expr.arguments.length - 1];
+      return (
+        !options ||
+        !ts.isArrayLiteralExpression(options) ||
+        options.elements.some((element) => acceptsUndefined(element, depth + 1))
+      );
+    }
+    if (method === "lazy") {
+      const getter = expr.arguments[0];
+      return getter && ts.isArrowFunction(getter) && !ts.isBlock(getter.body)
+        ? acceptsUndefined(getter.body, depth + 1)
+        : true;
+    }
+    return false;
+  }
+  if (["optional", "nullish", "default", "catch", "or"].includes(method)) {
+    return true;
+  }
+  return acceptsUndefined(receiver, depth + 1);
+}
+
 function handleObjectLiteral(objectLiteral) {
   const names = objectLiteralPropertySet(objectLiteral);
   if (!names) {
@@ -1897,13 +2110,15 @@ function handleObjectLiteral(objectLiteral) {
   // superRefine; cross-index conflicts were already resolved to neither.
   const conditionalRules =
     resolvedConditionals.get(setKey) ?? resolvedVariantUnions.get(setKey);
+  const dependentRequiredRules = resolvedDependentRequired.get(setKey);
   if (
     !resolvedProperties &&
     !resolvedUnionProperties &&
     !propertyNamesDescriptor &&
     !minPropertiesDescriptor &&
     !maxPropertiesDescriptor &&
-    !conditionalRules
+    !conditionalRules &&
+    !dependentRequiredRules
   ) {
     return;
   }
@@ -2071,11 +2286,52 @@ function handleObjectLiteral(objectLiteral) {
       !conditionalAlreadyConstrained(objectCall)
     ) {
       const text = renderConditionalRefine(conditionalRules);
-      edits.push({ pos: objectCall.getEnd(), text });
+      edits.push({ pos: objectChainEnd(objectCall), text });
       report.conditionalsInjected += 1;
       report.injections.push(`${setKey} :: <conditional> ${text}`);
       matchedAny = true;
     } else if (objectCall && conditionalAlreadyConstrained(objectCall)) {
+      report.fieldsAlreadyDone += 1;
+      matchedAny = true;
+    }
+  }
+  if (dependentRequiredRules) {
+    const objectCall = objectLiteral.parent;
+    // A subject whose dependents are all required keys of THIS literal can
+    // never change a verdict (z.object already rejects their absence) and is
+    // dropped before rendering: the wrapper would only turn the exported
+    // ZodObject into a ZodEffects, which has no .shape/.extend/.pick/.omit.
+    // Judged on the generated chain rather than the schema's `required`: an
+    // update and a response variant share one property set and differ only
+    // in optionality, so the property-set index cannot tell them apart.
+    const optionalNames = new Set();
+    for (const prop of objectLiteral.properties) {
+      if (
+        ts.isPropertyAssignment(prop) &&
+        (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)) &&
+        acceptsUndefined(prop.initializer)
+      ) {
+        optionalNames.add(prop.name.text);
+      }
+    }
+    const liveRules = dependentRequiredRules.filter(([, dependents]) =>
+      dependents.some((field) => optionalNames.has(field))
+    );
+    report.dependentRequiredVacuous +=
+      dependentRequiredRules.length - liveRules.length;
+    if (!liveRules.length) {
+      // Every rule is vacuous on this object: nothing to render.
+    } else if (
+      objectCall &&
+      ts.isCallExpression(objectCall) &&
+      !dependentRequiredAlreadyConstrained(objectCall)
+    ) {
+      const text = renderDependentRequiredRefine(liveRules);
+      edits.push({ pos: objectChainEnd(objectCall), text });
+      report.dependentRequiredInjected += 1;
+      report.injections.push(`${setKey} :: <dependentRequired> ${text}`);
+      matchedAny = true;
+    } else if (objectCall && dependentRequiredAlreadyConstrained(objectCall)) {
       report.fieldsAlreadyDone += 1;
       matchedAny = true;
     }
@@ -2214,6 +2470,8 @@ process.stdout.write(
     `${report.minPropertiesInjected} object minProperties check(s); ` +
     `${report.maxPropertiesInjected} object maxProperties check(s); ` +
     `${report.conditionalsInjected} conditional check(s); ` +
+    `${report.dependentRequiredInjected} object dependentRequired check(s); ` +
+    `${report.dependentRequiredVacuous} vacuous dependentRequired rule(s) skipped; ` +
     `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
     `${report.sharedMeasureInjected ?? 0} shared-measure split edit(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +

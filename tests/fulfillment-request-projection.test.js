@@ -26,11 +26,9 @@
 // so a shipping address would validate and then be SILENTLY DROPPED by
 // z.object's unknown-key stripping. The projector therefore hoists
 // branch-declared properties to the root of the projection (typed by the
-// branch). The spec's own `dependentRequired` (destinations needs `type`) is
-// not enforced here: on the create variant `type` is required, so a payload
-// carrying destinations without type is rejected anyway, but on the update
-// variant `type` is optional and such a payload is accepted although the
-// resolver rejects it. Enforcing the keyword is a separate injector change.
+// branch). The spec's `dependentRequired` (`destinations` requires `type`) is
+// enforced by `scripts/inject-schema-constraints.mjs` (see
+// `tests/dependent-required.test.js`).
 //
 // The required/optional tables below are those of
 //   ucp-schema resolve <file> --request --op create
