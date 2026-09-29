@@ -176,6 +176,10 @@ if [[ -d "$SPEC_DIR/schemas/common" ]]; then
     --src "$SPEC_DIR/schemas/common/payment_ap2_mandate.json#/\$defs/checkout_mandate"
     --src "$SPEC_DIR/schemas/common/payment_ap2_mandate.json#/\$defs/error_code"
   )
+  [[ -f "$SPEC_DIR/schemas/common/payment_authentication.json" ]] && QUICKTYPE_ARGS+=(
+    --src "$SPEC_DIR/schemas/common/payment_authentication.json#/\$defs/payment_actions"
+    --src "$SPEC_DIR/schemas/common/payment_authentication.json#/\$defs/dev.ucp.shopping.checkout"
+  )
 fi
 
 if [[ -d "$SPEC_DIR/schemas/transports" ]]; then
