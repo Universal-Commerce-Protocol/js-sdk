@@ -863,7 +863,14 @@ export const FulfillmentDestinationResponseSchema = z.object({
 export type FulfillmentDestinationResponse = z.infer<
   typeof FulfillmentDestinationResponseSchema
 >;
-export const BindingSchema = FulfillmentDestinationResponseSchema;
+export const BindingSchema = z.object({
+  id: z.string().min(1),
+  type: z
+    .string()
+    .regex(
+      /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+    ),
+});
 export type Binding = FulfillmentDestinationResponse;
 
 export const FulfillmentOptionResponseSchema = z.object({

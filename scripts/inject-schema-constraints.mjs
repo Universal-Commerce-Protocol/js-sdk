@@ -1521,6 +1521,49 @@ const sharedMeasureSplitNeeded = (() => {
   return true;
 })();
 
+// --- Shared {id,type} destination/binding: contextual split ------------------
+//
+// The companion to the base-kind contest above. `shopping/types/
+// fulfillment_destination.json` declares {id,type} as plain strings;
+// `common/types/binding.json` narrows the same property set with
+// `minLength: 1` on `id` and reverse_domain_name.json's reverse-domain pattern
+// on `type`. The contest correctly stops the binding's rules being injected
+// onto the shared generated object -- but quicktype named that object after the
+// DESTINATION and emitted `BindingSchema` as an alias of it, so the binding
+// would lose rules it does declare.
+//
+// Split the binding back out into a standalone object carrying its own rules,
+// exactly as the {id,quantity} and Measure splits above do. The split cannot
+// replace the contest: the object that must stop being constrained IS the
+// shared one, and only the contest de-constrains it; the split then restores
+// the binding.
+//
+// Gated strictly on schema evidence inside the "id,type" property set: `type`
+// must carry a string pattern, `id` a string minLength, and BOTH must have been
+// contested by an unconstrained string occurrence -- i.e. this is the collapsed
+// pair, not a coincidental same-shape object. The rendered methods are derived
+// from the recorded descriptors, so a spec change to the pattern or the length
+// flows through instead of being frozen here.
+const BINDING_SET_KEY = "id,type";
+const bindingSplitDescriptors = (() => {
+  const byProperty = constraintIndex.get(BINDING_SET_KEY);
+  if (!byProperty) return null;
+  const contested = unconstrainedKindIndex.get(BINDING_SET_KEY);
+  if (!contested) return null;
+  const sole = (name) => {
+    const bySignature = byProperty.get(name);
+    if (!bySignature || bySignature.size !== 1) return null;
+    if (!contested.get(name)?.has("string")) return null;
+    const descriptor = [...bySignature.values()][0];
+    return descriptorBaseKind(descriptor) === "string" ? descriptor : null;
+  };
+  const type = sole("type");
+  const id = sole("id");
+  if (!type || !id) return null;
+  if (type.pattern === undefined || id.minLength === undefined) return null;
+  return { type, id };
+})();
+
 // --- Zod method rendering --------------------------------------------------
 
 function toRegexLiteral(pattern) {
@@ -2115,6 +2158,7 @@ const report = {
   dependentRequiredInjected: 0,
   dependentRequiredVacuous: 0,
   sharedQuantityInjected: 0,
+  bindingSplitInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -2560,6 +2604,34 @@ if (sharedMeasureSplitNeeded) {
   }
 }
 
+// Apply the contextual {id,type} binding split. Matches the alias by its
+// RIGHT-HAND SIDE shape rather than by the shared object's name, which is
+// quicktype's choice and may change: any `= <Something>Schema;` alias of a
+// generated object is replaced by a standalone object carrying the binding's
+// own recovered rules. Idempotent -- once split, BindingSchema is a z.object
+// and no longer matches the alias pattern.
+if (bindingSplitDescriptors) {
+  const aliasRef = /export const BindingSchema = (\w+Schema);/;
+  const matched = aliasRef.exec(sourceText);
+  if (matched) {
+    const typeMethods = methodsFor(bindingSplitDescriptors.type, "string");
+    const idMethods = methodsFor(bindingSplitDescriptors.id, "string");
+    if (typeMethods && idMethods) {
+      const standalone =
+        `export const BindingSchema = z.object({\n` +
+        `  id: z.string()${idMethods.join("")},\n` +
+        `  type: z.string()${typeMethods.join("")},\n` +
+        `});`;
+      edits.push({
+        pos: matched.index,
+        remove: matched[0].length,
+        text: standalone,
+      });
+      report.bindingSplitInjected += 1;
+    }
+  }
+}
+
 // Apply edits back-to-front so positions stay valid.
 edits.sort((a, b) => b.pos - a.pos);
 let output = sourceText;
@@ -2586,6 +2658,7 @@ process.stdout.write(
     `${report.dependentRequiredVacuous} vacuous dependentRequired rule(s) skipped; ` +
     `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
     `${report.sharedMeasureInjected ?? 0} shared-measure split edit(s); ` +
+    `${report.bindingSplitInjected} binding split edit(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );

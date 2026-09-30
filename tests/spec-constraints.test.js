@@ -73,6 +73,7 @@ const {
   FulfillmentDestinationCreateRequestSchema,
   FulfillmentDestinationUpdateRequestSchema,
   DestinationElementSchema,
+  BindingSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -1120,4 +1121,51 @@ test("PriceFilterSchema keeps its amount bounds despite the shared {max,min} set
   assert.ok(rejects(PriceFilterSchema, { min: -1 }));
   assert.ok(rejects(PriceFilterSchema, { max: 9.99 }));
   assert.ok(accepts(PriceFilterSchema, { min: 0, max: 500 }));
+});
+
+// --- BindingSchema: the other side of the shared {id,type} set --------------
+// De-constraining the shared destination object is necessary (the destination
+// declares no rules) but it must not de-validate common/types/binding.json,
+// which DOES declare `minLength: 1` on id and reverse_domain_name.json's
+// pattern on type. quicktype named the shared object after the destination and
+// emitted BindingSchema as an alias of it, so the binding is split back out
+// into a standalone object carrying its own rules -- the same shape as the
+// {id,quantity} and Measure splits already in the injector.
+
+test("BindingSchema is not an alias of the shared destination object", () => {
+  assert.notStrictEqual(BindingSchema, FulfillmentDestinationResponseSchema);
+});
+
+test("BindingSchema keeps its reverse-domain pattern on type", () => {
+  assert.ok(rejects(BindingSchema, { type: "not-a-domain", id: "co_1" }));
+  assert.ok(rejects(BindingSchema, { type: "shipping_address", id: "co_1" }));
+  assert.ok(
+    accepts(BindingSchema, { type: "dev.ucp.shopping.checkout", id: "co_1" })
+  );
+});
+
+test("BindingSchema keeps its minLength on id", () => {
+  assert.ok(
+    rejects(BindingSchema, { type: "dev.ucp.shopping.checkout", id: "" })
+  );
+});
+
+test("BindingSchema rejects the payload that pins the split", () => {
+  // Both rules violated at once. This single assertion is the whole point of
+  // the split: it passes upstream only because the binding inherited the
+  // destination's poisoned constraints, and it must keep passing once the
+  // destination is correctly de-constrained.
+  assert.ok(rejects(BindingSchema, { type: "not-a-domain", id: "" }));
+});
+
+test("BindingSchema still requires both type and id", () => {
+  assert.ok(rejects(BindingSchema, { type: "dev.ucp.shopping.checkout" }));
+  assert.ok(rejects(BindingSchema, { id: "co_1" }));
+});
+
+test("the destination family is unaffected by the binding split", () => {
+  assert.ok(accepts(FulfillmentDestinationSchema, SPEC_DESTINATION_EXAMPLE));
+  assert.ok(
+    accepts(FulfillmentDestinationResponseSchema, SPEC_DESTINATION_EXAMPLE)
+  );
 });
