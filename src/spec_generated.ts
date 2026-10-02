@@ -3649,6 +3649,46 @@ export type IdentityLinkingBusiness = z.infer<
   typeof IdentityLinkingBusinessSchema
 >;
 
+export const DevUcpCommonPaymentDeviceDataCollectionConfigSchema = z.object({
+  payment_instrument_id: z.string().min(1),
+  url: z.string().url(),
+});
+export type DevUcpCommonPaymentDeviceDataCollectionConfig = z.infer<
+  typeof DevUcpCommonPaymentDeviceDataCollectionConfigSchema
+>;
+export const DevUcpCommonPaymentThreeDsChallengeConfigSchema =
+  DevUcpCommonPaymentDeviceDataCollectionConfigSchema;
+export type DevUcpCommonPaymentThreeDsChallengeConfig =
+  DevUcpCommonPaymentDeviceDataCollectionConfig;
+
+export const DevUcpCommonPaymentDeviceDataCollectionSchema = z.object({
+  config: DevUcpCommonPaymentDeviceDataCollectionConfigSchema,
+});
+export type DevUcpCommonPaymentDeviceDataCollection = z.infer<
+  typeof DevUcpCommonPaymentDeviceDataCollectionSchema
+>;
+export const DevUcpCommonPaymentThreeDsChallengeSchema =
+  DevUcpCommonPaymentDeviceDataCollectionSchema;
+export type DevUcpCommonPaymentThreeDsChallenge =
+  DevUcpCommonPaymentDeviceDataCollection;
+
+export const ActionsSchema = z.object({
+  "dev.ucp.common.payment.device_data_collection": z
+    .array(DevUcpCommonPaymentDeviceDataCollectionSchema)
+    .optional(),
+  "dev.ucp.common.payment.three_ds_challenge": z
+    .array(DevUcpCommonPaymentThreeDsChallengeSchema)
+    .optional(),
+});
+export type Actions = z.infer<typeof ActionsSchema>;
+
+export const PaymentAuthenticationCheckoutPayloadSchema = z.object({
+  actions: ActionsSchema.optional(),
+});
+export type PaymentAuthenticationCheckoutPayload = z.infer<
+  typeof PaymentAuthenticationCheckoutPayloadSchema
+>;
+
 export const TotalResponseSchema = TotalSchema;
 export type TotalResponse = Total;
 

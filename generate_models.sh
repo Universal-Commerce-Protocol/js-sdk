@@ -67,9 +67,12 @@ PROJECTED_CONSTRAINT_SCHEMA_DIR=""
 TMP_OUTPUT="$(mktemp "${TMPDIR:-/tmp}/ucp-spec-generated.XXXXXX.ts")"
 TMP_DECLARATIONS="$(mktemp "${TMPDIR:-/tmp}/ucp-declarations-generated.XXXXXX.ts")"
 DECLARATION_MANIFEST="$(mktemp "${TMPDIR:-/tmp}/ucp-declarations-manifest.XXXXXX.json")"
+SHARED_SRC_MANIFEST="$(mktemp "${TMPDIR:-/tmp}/ucp-shared-srcs.XXXXXX.txt")"
+CAPABILITY_SRC_MANIFEST="$(mktemp "${TMPDIR:-/tmp}/ucp-capability-srcs.XXXXXX.json")"
 PROJECTED_SPEC_DIR=""
 cleanup() {
-  rm -f "$TMP_OUTPUT" "$TMP_DECLARATIONS" "$DECLARATION_MANIFEST"
+  rm -f "$TMP_OUTPUT" "$TMP_DECLARATIONS" "$DECLARATION_MANIFEST" \
+    "$SHARED_SRC_MANIFEST" "$CAPABILITY_SRC_MANIFEST"
   if [[ -n "$PROJECTED_SPEC_DIR" ]]; then
     rm -rf "$PROJECTED_SPEC_DIR"
   fi
@@ -196,6 +199,17 @@ fi
 
 QUICKTYPE_ARGS+=(-o "$TMP_OUTPUT")
 
+# Record the source fragments already covered by the shared quicktype
+# invocation. Capability discovery compares against this manifest; maintaining
+# one source of truth here prevents its coverage check from drifting away from
+# the actual command line.
+for ((i = 0; i < ${#QUICKTYPE_ARGS[@]}; i += 1)); do
+  if [[ "${QUICKTYPE_ARGS[$i]}" == "--src" ]]; then
+    printf '%s\n' "${QUICKTYPE_ARGS[$((i + 1))]#"$SPEC_DIR"/}" \
+      >> "$SHARED_SRC_MANIFEST"
+  fi
+done
+
 run_quicktype() {
   if [[ -x "./node_modules/.bin/quicktype" ]]; then
     ./node_modules/.bin/quicktype "$@"
@@ -238,6 +252,27 @@ if (( ${#DECLARATION_ARGS[@]} )); then
   run_quicktype --lang typescript-zod --src-lang schema "${DECLARATION_ARGS[@]}" -o "$TMP_DECLARATIONS"
   node scripts/merge-generated-fragment.mjs "$TMP_OUTPUT" "$TMP_DECLARATIONS"
 fi
+
+# Capability SOURCES the shared invocation above does not model at all. The
+# shared --src list is written by hand, so a capability the list does not name
+# -- every capability a later spec release adds -- generates nothing and does so
+# silently: quicktype exits 0 whether or not a source produced anything. That is
+# how common/payment_authentication.json shipped zero models (js-sdk#64).
+#
+# Discovery is keyed on shape in the RAW authored tree, never on file names, so
+# a new capability needs no projector or shell edit here. Sources it reports as
+# unmodeled are generated in their OWN bounded invocation -- one
+# unrepresentable shape must not reconfigure the shared name pool (a breaking
+# API change) nor make quicktype drop unrelated models from the
+# shared run -- and merged in. The pass then proves, per fragment, that something
+# was generated: an unrepresentable fragment must appear in
+# scripts/capability-src-exclusions.json with a reason, and an exclusion that is
+# no longer needed or no longer exists fails the build.
+node scripts/discover-capability-srcs.mjs \
+  --shared "$SHARED_SRC_MANIFEST" \
+  --manifest "$CAPABILITY_SRC_MANIFEST" \
+  --generated "$TMP_OUTPUT" \
+  "$RAW_CONSTRAINT_SCHEMA_DIR"
 
 node scripts/normalize-generated-schemas.mjs "$TMP_OUTPUT" src/spec_generated.ts
 
