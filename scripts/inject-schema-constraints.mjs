@@ -329,6 +329,70 @@ function collectContainsGroups(node, file, seen = new Set(), depth = 0) {
   return groups;
 }
 
+/**
+ * The JSON Schema base kind of a property, as the zod renderer sees it.
+ *
+ * Mirrors `methodsFor`'s baseKind vocabulary ("number" / "string" / "array" /
+ * "object") so a schema-side kind and a descriptor-side kind are comparable.
+ * Returns null for a kind this generator does not constrain (boolean, null, an
+ * absent `type`, or a union of several non-null types), which never competes.
+ */
+function schemaBaseKind(propertyNode, file) {
+  const eff = effectiveConstraints(propertyNode, file);
+  let type = eff.type;
+  if (Array.isArray(type)) {
+    const named = type.filter((entry) => entry !== "null");
+    if (named.length !== 1) return null;
+    type = named[0];
+  }
+  if (type === "integer" || type === "number") return "number";
+  if (type === "string") return "string";
+  if (type === "array") return "array";
+  if (type === "object") return "object";
+  return null;
+}
+
+/**
+ * The base kind a descriptor's constraints require, derived from which
+ * keywords it carries -- the same classification `methodsFor` applies before it
+ * checks the generated field's base kind against it.
+ */
+function descriptorBaseKind(descriptor) {
+  if (
+    descriptor.int !== undefined ||
+    descriptor.minimum !== undefined ||
+    descriptor.maximum !== undefined ||
+    descriptor.exclusiveMinimum !== undefined ||
+    descriptor.exclusiveMaximum !== undefined
+  ) {
+    return "number";
+  }
+  if (
+    descriptor.minLength !== undefined ||
+    descriptor.maxLength !== undefined ||
+    descriptor.pattern !== undefined ||
+    descriptor.format !== undefined
+  ) {
+    return "string";
+  }
+  if (
+    descriptor.minItems !== undefined ||
+    descriptor.maxItems !== undefined ||
+    descriptor.uniqueItems !== undefined ||
+    descriptor.containsGroups !== undefined
+  ) {
+    return "array";
+  }
+  if (
+    descriptor.minProperties !== undefined ||
+    descriptor.maxProperties !== undefined ||
+    descriptor.propertyNamesPattern !== undefined
+  ) {
+    return "object";
+  }
+  return null;
+}
+
 /** Normalize a node's constraints into a canonical descriptor + signature. */
 function describeConstraint(propertyNode, file) {
   const eff = effectiveConstraints(propertyNode, file);
@@ -463,6 +527,30 @@ function describeStringArrayUnionConstraint(
 // setKey -> Map(propertyName -> Map(signature -> descriptor))
 const constraintIndex = new Map();
 
+// Occurrences that declare NO value constraint at all, recorded by base kind so
+// they can COMPETE with a constrained occurrence of the same property set.
+//
+// Without this, an unconstrained occurrence is evidence the index never sees:
+// `describeConstraint` returns null for an empty descriptor, `recordObject`
+// stores nothing, and a single constrained occurrence elsewhere resolves
+// unopposed and is injected onto the shared generated object. That is issue
+// #77's second cause -- `shopping/types/fulfillment_destination.json` declares
+// {id,type} as plain strings while `common/types/binding.json` narrows the same
+// property set with `minLength: 1` and a reverse-domain pattern, so the whole
+// destination family inherited the binding's rules and rejected the spec's own
+// published `"type": "shipping_address"` example.
+//
+// Competition is deliberately restricted to a MATCHING BASE KIND. `{max,min}`
+// is shared by `price_filter.json` (both fields -> amount.json, an integer with
+// bounds) and `price_range.json` (both fields -> price.json, an object). The
+// object occurrence carries no scalar constraint, so an unqualified guard would
+// strip PriceFilterSchema's amount bounds -- a real regression, and one the
+// existing PriceFilterSchema test pins. Kinds differ there ("object" vs
+// "number"), so nothing competes; in the destination/binding case both sides
+// are "string", so they do.
+// setKey -> Map(propertyName -> Set(baseKind))
+const unconstrainedKindIndex = new Map();
+
 // Constrained scalar unions (`string | array<string>`) keyed like field
 // constraints, but rendered by replacing the generated `z.union(...)` call
 // rather than appending one method to a single base constructor.
@@ -540,6 +628,20 @@ function recordObject(properties, file, propertyFiles) {
         byProperty.set(name, new Map());
       }
       byProperty.get(name).set(described.signature, described.descriptor);
+    } else {
+      // No constraints here. Record the base kind so this occurrence competes
+      // with any constrained occurrence of the same kind in this property set.
+      const kind = schemaBaseKind(propertyNode, propertyFile);
+      if (kind !== null) {
+        if (!unconstrainedKindIndex.has(setKey)) {
+          unconstrainedKindIndex.set(setKey, new Map());
+        }
+        const kindsByProperty = unconstrainedKindIndex.get(setKey);
+        if (!kindsByProperty.has(name)) {
+          kindsByProperty.set(name, new Set());
+        }
+        kindsByProperty.get(name).add(kind);
+      }
     }
     const describedUnion = describeStringArrayUnionConstraint(
       propertyNode,
@@ -1210,12 +1312,22 @@ const resolvedIndex = new Map();
 const ambiguous = [];
 for (const [setKey, byProperty] of constraintIndex) {
   const resolvedProperties = new Map();
+  const unconstrainedKinds = unconstrainedKindIndex.get(setKey);
   for (const [name, bySignature] of byProperty) {
-    if (bySignature.size === 1) {
-      resolvedProperties.set(name, [...bySignature.values()][0]);
-    } else {
+    if (bySignature.size !== 1) {
       ambiguous.push({ setKey, name, count: bySignature.size });
+      continue;
     }
+    const descriptor = [...bySignature.values()][0];
+    // An occurrence of the same base kind that declares no constraint is a
+    // conflicting contract, not an absence of evidence: the shared generated
+    // object must satisfy both, so neither side's rules may be injected.
+    const kind = descriptorBaseKind(descriptor);
+    if (kind !== null && unconstrainedKinds?.get(name)?.has(kind)) {
+      ambiguous.push({ setKey, name, count: bySignature.size + 1 });
+      continue;
+    }
+    resolvedProperties.set(name, descriptor);
   }
   if (resolvedProperties.size) {
     resolvedIndex.set(setKey, resolvedProperties);
@@ -1407,6 +1519,49 @@ const sharedMeasureSplitNeeded = (() => {
     ambiguous.splice(ambigIdx, 1);
   }
   return true;
+})();
+
+// --- Shared {id,type} destination/binding: contextual split ------------------
+//
+// The companion to the base-kind contest above. `shopping/types/
+// fulfillment_destination.json` declares {id,type} as plain strings;
+// `common/types/binding.json` narrows the same property set with
+// `minLength: 1` on `id` and reverse_domain_name.json's reverse-domain pattern
+// on `type`. The contest correctly stops the binding's rules being injected
+// onto the shared generated object -- but quicktype named that object after the
+// DESTINATION and emitted `BindingSchema` as an alias of it, so the binding
+// would lose rules it does declare.
+//
+// Split the binding back out into a standalone object carrying its own rules,
+// exactly as the {id,quantity} and Measure splits above do. The split cannot
+// replace the contest: the object that must stop being constrained IS the
+// shared one, and only the contest de-constrains it; the split then restores
+// the binding.
+//
+// Gated strictly on schema evidence inside the "id,type" property set: `type`
+// must carry a string pattern, `id` a string minLength, and BOTH must have been
+// contested by an unconstrained string occurrence -- i.e. this is the collapsed
+// pair, not a coincidental same-shape object. The rendered methods are derived
+// from the recorded descriptors, so a spec change to the pattern or the length
+// flows through instead of being frozen here.
+const BINDING_SET_KEY = "id,type";
+const bindingSplitDescriptors = (() => {
+  const byProperty = constraintIndex.get(BINDING_SET_KEY);
+  if (!byProperty) return null;
+  const contested = unconstrainedKindIndex.get(BINDING_SET_KEY);
+  if (!contested) return null;
+  const sole = (name) => {
+    const bySignature = byProperty.get(name);
+    if (!bySignature || bySignature.size !== 1) return null;
+    if (!contested.get(name)?.has("string")) return null;
+    const descriptor = [...bySignature.values()][0];
+    return descriptorBaseKind(descriptor) === "string" ? descriptor : null;
+  };
+  const type = sole("type");
+  const id = sole("id");
+  if (!type || !id) return null;
+  if (type.pattern === undefined || id.minLength === undefined) return null;
+  return { type, id };
 })();
 
 // --- Zod method rendering --------------------------------------------------
@@ -2003,6 +2158,7 @@ const report = {
   dependentRequiredInjected: 0,
   dependentRequiredVacuous: 0,
   sharedQuantityInjected: 0,
+  bindingSplitInjected: 0,
   fieldsSkippedType: 0,
   fieldsAlreadyDone: 0,
   injections: [],
@@ -2448,6 +2604,34 @@ if (sharedMeasureSplitNeeded) {
   }
 }
 
+// Apply the contextual {id,type} binding split. Matches the alias by its
+// RIGHT-HAND SIDE shape rather than by the shared object's name, which is
+// quicktype's choice and may change: any `= <Something>Schema;` alias of a
+// generated object is replaced by a standalone object carrying the binding's
+// own recovered rules. Idempotent -- once split, BindingSchema is a z.object
+// and no longer matches the alias pattern.
+if (bindingSplitDescriptors) {
+  const aliasRef = /export const BindingSchema = (\w+Schema);/;
+  const matched = aliasRef.exec(sourceText);
+  if (matched) {
+    const typeMethods = methodsFor(bindingSplitDescriptors.type, "string");
+    const idMethods = methodsFor(bindingSplitDescriptors.id, "string");
+    if (typeMethods && idMethods) {
+      const standalone =
+        `export const BindingSchema = z.object({\n` +
+        `  id: z.string()${idMethods.join("")},\n` +
+        `  type: z.string()${typeMethods.join("")},\n` +
+        `});`;
+      edits.push({
+        pos: matched.index,
+        remove: matched[0].length,
+        text: standalone,
+      });
+      report.bindingSplitInjected += 1;
+    }
+  }
+}
+
 // Apply edits back-to-front so positions stay valid.
 edits.sort((a, b) => b.pos - a.pos);
 let output = sourceText;
@@ -2474,6 +2658,7 @@ process.stdout.write(
     `${report.dependentRequiredVacuous} vacuous dependentRequired rule(s) skipped; ` +
     `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
     `${report.sharedMeasureInjected ?? 0} shared-measure split edit(s); ` +
+    `${report.bindingSplitInjected} binding split edit(s); ` +
     `${report.fieldsAlreadyDone} already constrained; ` +
     `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
 );

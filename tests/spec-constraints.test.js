@@ -68,6 +68,12 @@ const {
   ProviderSchema,
   LoyaltyMembershipSchema,
   PaymentTermSchema,
+  FulfillmentDestinationSchema,
+  FulfillmentDestinationResponseSchema,
+  FulfillmentDestinationCreateRequestSchema,
+  FulfillmentDestinationUpdateRequestSchema,
+  DestinationElementSchema,
+  BindingSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -1042,5 +1048,124 @@ test("PaymentTermSchema validates payment terms", () => {
         },
       ],
     })
+  );
+});
+
+// --- Shared {id,type} property set: fulfillment destination vs binding ------
+// Regression for issue #77's second cause. `shopping/types/fulfillment_destination.json`
+// and `common/types/binding.json` both resolve to the property set {id,type},
+// so quicktype collapses them onto one generated object. The destination
+// declares both fields as a plain `type: string`; the binding narrows `id` with
+// `minLength: 1` and `type` with reverse_domain_name.json's pattern. Because an
+// unconstrained occurrence recorded nothing, the binding's constraints resolved
+// unopposed and were injected onto the whole destination family, which then
+// rejected the spec's own published example ("type": "shipping_address" has no
+// dot, so the reverse-domain pattern cannot match it).
+
+// The exact payload from docs/specification/shopping/extensions/fulfillment.md
+// (the `shopping/types/shipping_destination` op=read direction=response example).
+const SPEC_DESTINATION_EXAMPLE = {
+  type: "shipping_address",
+  id: "dest_1",
+  street_address: "123 Main St",
+  address_locality: "Springfield",
+  address_region: "IL",
+  postal_code: "62701",
+  address_country: "US",
+};
+
+test("the destination family accepts the spec's published shipping_address example", () => {
+  for (const schema of [
+    FulfillmentDestinationSchema,
+    FulfillmentDestinationResponseSchema,
+    FulfillmentDestinationCreateRequestSchema,
+    FulfillmentDestinationUpdateRequestSchema,
+    DestinationElementSchema,
+  ]) {
+    assert.ok(accepts(schema, SPEC_DESTINATION_EXAMPLE));
+  }
+});
+
+test("a destination type is not held to a reverse-domain pattern", () => {
+  // Both well-known values in the spec's table are bare tokens.
+  assert.ok(
+    accepts(FulfillmentDestinationSchema, {
+      type: "shipping_address",
+      id: "d1",
+    })
+  );
+  assert.ok(
+    accepts(FulfillmentDestinationSchema, {
+      type: "business_location",
+      id: "d1",
+    })
+  );
+});
+
+test("a destination id is not held to the binding's minLength", () => {
+  // fulfillment_destination.json declares no minLength on id.
+  assert.ok(
+    accepts(FulfillmentDestinationSchema, { type: "shipping_address", id: "" })
+  );
+});
+
+// --- The base-kind guard must not over-fire --------------------------------
+// `common/types/price_filter.json` ({min,max} -> amount.json, an integer with
+// bounds) and `common/types/price_range.json` ({min,max} -> price.json, an
+// object) share the property set {max,min}. The object occurrence records no
+// scalar constraints, so a guard that let ANY unconstrained occurrence compete
+// would strip PriceFilterSchema's amount bounds. Competition is therefore
+// restricted to occurrences whose base kind matches.
+
+test("PriceFilterSchema keeps its amount bounds despite the shared {max,min} set", () => {
+  assert.ok(rejects(PriceFilterSchema, { min: -1 }));
+  assert.ok(rejects(PriceFilterSchema, { max: 9.99 }));
+  assert.ok(accepts(PriceFilterSchema, { min: 0, max: 500 }));
+});
+
+// --- BindingSchema: the other side of the shared {id,type} set --------------
+// De-constraining the shared destination object is necessary (the destination
+// declares no rules) but it must not de-validate common/types/binding.json,
+// which DOES declare `minLength: 1` on id and reverse_domain_name.json's
+// pattern on type. quicktype named the shared object after the destination and
+// emitted BindingSchema as an alias of it, so the binding is split back out
+// into a standalone object carrying its own rules -- the same shape as the
+// {id,quantity} and Measure splits already in the injector.
+
+test("BindingSchema is not an alias of the shared destination object", () => {
+  assert.notStrictEqual(BindingSchema, FulfillmentDestinationResponseSchema);
+});
+
+test("BindingSchema keeps its reverse-domain pattern on type", () => {
+  assert.ok(rejects(BindingSchema, { type: "not-a-domain", id: "co_1" }));
+  assert.ok(rejects(BindingSchema, { type: "shipping_address", id: "co_1" }));
+  assert.ok(
+    accepts(BindingSchema, { type: "dev.ucp.shopping.checkout", id: "co_1" })
+  );
+});
+
+test("BindingSchema keeps its minLength on id", () => {
+  assert.ok(
+    rejects(BindingSchema, { type: "dev.ucp.shopping.checkout", id: "" })
+  );
+});
+
+test("BindingSchema rejects the payload that pins the split", () => {
+  // Both rules violated at once. This single assertion is the whole point of
+  // the split: it passes upstream only because the binding inherited the
+  // destination's poisoned constraints, and it must keep passing once the
+  // destination is correctly de-constrained.
+  assert.ok(rejects(BindingSchema, { type: "not-a-domain", id: "" }));
+});
+
+test("BindingSchema still requires both type and id", () => {
+  assert.ok(rejects(BindingSchema, { type: "dev.ucp.shopping.checkout" }));
+  assert.ok(rejects(BindingSchema, { id: "co_1" }));
+});
+
+test("the destination family is unaffected by the binding split", () => {
+  assert.ok(accepts(FulfillmentDestinationSchema, SPEC_DESTINATION_EXAMPLE));
+  assert.ok(
+    accepts(FulfillmentDestinationResponseSchema, SPEC_DESTINATION_EXAMPLE)
   );
 });

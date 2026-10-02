@@ -857,6 +857,13 @@ export type FulfillmentAvailableMethodResponse = z.infer<
 >;
 
 export const FulfillmentDestinationResponseSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+});
+export type FulfillmentDestinationResponse = z.infer<
+  typeof FulfillmentDestinationResponseSchema
+>;
+export const BindingSchema = z.object({
   id: z.string().min(1),
   type: z
     .string()
@@ -864,10 +871,6 @@ export const FulfillmentDestinationResponseSchema = z.object({
       /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
     ),
 });
-export type FulfillmentDestinationResponse = z.infer<
-  typeof FulfillmentDestinationResponseSchema
->;
-export const BindingSchema = FulfillmentDestinationResponseSchema;
 export type Binding = FulfillmentDestinationResponse;
 
 export const FulfillmentOptionResponseSchema = z.object({
@@ -1463,13 +1466,8 @@ export const DetailOptionValueSchema = z.object({
 export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
 
 export const FulfillmentDestinationCreateRequestSchema = z.object({
-  id: z.string().min(1).optional(),
-  type: z
-    .string()
-    .regex(
-      /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
-    )
-    .optional(),
+  id: z.string().optional(),
+  type: z.string().optional(),
 });
 export type FulfillmentDestinationCreateRequest = z.infer<
   typeof FulfillmentDestinationCreateRequestSchema
