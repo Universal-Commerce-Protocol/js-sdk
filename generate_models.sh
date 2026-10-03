@@ -300,6 +300,19 @@ if [[ -d "$SPEC_DIR/discovery" ]]; then
   node scripts/inject-schema-constraints.mjs "$SPEC_DIR/discovery" src/spec_generated.ts
 fi
 
+# Keep the unknown keys an open object (`additionalProperties: true`) admits;
+# a bare z.object strips them on parse. Judged over every tree the models are
+# generated from in one pass, because one generated object can stand for
+# sources in more than one of them (scripts/retain-additional-properties.mjs).
+RETAIN_SCHEMA_DIRS=("$RAW_CONSTRAINT_SCHEMA_DIR")
+if [[ -n "$PROJECTED_CONSTRAINT_SCHEMA_DIR" ]]; then
+  RETAIN_SCHEMA_DIRS+=("$PROJECTED_CONSTRAINT_SCHEMA_DIR")
+fi
+if [[ -d "$SPEC_DIR/discovery" ]]; then
+  RETAIN_SCHEMA_DIRS+=("$SPEC_DIR/discovery")
+fi
+node scripts/retain-additional-properties.mjs src/spec_generated.ts "${RETAIN_SCHEMA_DIRS[@]}"
+
 # Format the generated output to match the repo's Prettier config (the checked-in
 # file is formatted with .prettierrc; without this step regenerated output drifts
 # by indentation and formatting noise).
