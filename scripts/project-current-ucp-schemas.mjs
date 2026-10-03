@@ -451,6 +451,7 @@ function projectSchemaNode(node, context) {
   }
 
   restoreBranchProperties(output, omittedProperties, context);
+  foldArrayRedeclarations(node, output, context);
 
   return output;
 }
@@ -542,6 +543,101 @@ function restoreBranchProperties(output, omittedProperties, context) {
   for (const [name, serialized] of restored) {
     output.properties[name] = JSON.parse(serialized);
   }
+}
+
+// quicktype resolves `allOf` as an intersection, and its intersection of two
+// array types keeps the items of only one of them: quicktype-core's
+// IntersectionAccumulator.updateArrayItemTypes never records the items of the
+// first array it meets. A node that composes a base through `allOf` and
+// redeclares one of the base's array properties with narrower items therefore
+// generated the BASE items. catalog_lookup.json's detail_product narrows
+// product.json's options[].values[] to detail_option_value.json, yet
+// GetProductResponseSchema used the plain option value and stripped
+// `available` and `exists` from every parsed value.
+//
+// Moving such a redeclaration into a trailing `allOf` branch makes it the array
+// whose items survive. The spec's redeclared items refine the base's, so they
+// are also what a correct intersection yields, and the move stays right if
+// quicktype fixes this.
+function foldArrayRedeclarations(node, output, context) {
+  if (
+    !Array.isArray(node.allOf) ||
+    !Array.isArray(output.allOf) ||
+    !node.properties ||
+    !output.properties
+  ) {
+    return;
+  }
+
+  const inherited = {};
+  for (const member of node.allOf) {
+    Object.assign(
+      inherited,
+      composedProperties(member, context.sourceRel, context.schemaCache)
+    );
+  }
+
+  const branch = { type: "object", properties: {} };
+  for (const [name, schema] of Object.entries(node.properties)) {
+    const base = inherited[name];
+    if (
+      !(name in output.properties) ||
+      schema?.type !== "array" ||
+      base?.type !== "array" ||
+      JSON.stringify(schema.items) === JSON.stringify(base.items)
+    ) {
+      continue;
+    }
+    branch.properties[name] = output.properties[name];
+    delete output.properties[name];
+    if (Array.isArray(output.required) && output.required.includes(name)) {
+      output.required = output.required.filter((entry) => entry !== name);
+      branch.required = [...(branch.required ?? []), name];
+    }
+  }
+
+  if (Object.keys(branch.properties).length === 0) {
+    return;
+  }
+  if (Object.keys(output.properties).length === 0) {
+    delete output.properties;
+  }
+  if (Array.isArray(output.required) && output.required.length === 0) {
+    delete output.required;
+  }
+  output.allOf = [...output.allOf, branch];
+}
+
+// The properties an `allOf` member contributes in the source tree, own and
+// composed.
+function composedProperties(member, sourceRel, schemaCache, depth = 0) {
+  if (!member || typeof member !== "object" || depth > 16) {
+    return {};
+  }
+  if (typeof member.$ref === "string") {
+    const [refPath, fragment = ""] = member.$ref.split("#");
+    if (/^[a-z]+:\/\//i.test(refPath)) {
+      return {};
+    }
+    const targetRel = refPath
+      ? path.posix.normalize(
+          path.posix.join(path.posix.dirname(sourceRel), refPath)
+        )
+      : sourceRel;
+    let target = schemaCache.get(targetRel);
+    for (const segment of fragment.split("/").filter(Boolean)) {
+      target = target?.[segment];
+    }
+    return composedProperties(target, targetRel, schemaCache, depth + 1);
+  }
+  const properties = {};
+  for (const part of member.allOf ?? []) {
+    Object.assign(
+      properties,
+      composedProperties(part, sourceRel, schemaCache, depth + 1)
+    );
+  }
+  return Object.assign(properties, member.properties);
 }
 
 function titleSuffixForOutput(outputRel) {

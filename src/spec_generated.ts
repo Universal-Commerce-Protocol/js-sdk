@@ -1010,6 +1010,14 @@ export type VariantSeller = z.infer<typeof VariantSellerSchema>;
 export const PurpleSellerSchema = VariantSellerSchema;
 export type PurpleSeller = VariantSeller;
 
+export const DetailOptionValueSchema = z.object({
+  available: z.boolean().optional(),
+  exists: z.boolean().optional(),
+  id: z.string().optional(),
+  label: z.string(),
+});
+export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
+
 export const SearchRequestPaginationSchema = z.object({
   cursor: z.string().optional(),
   limit: z.number().int().gte(1).optional(),
@@ -1500,14 +1508,6 @@ export const MultiDestinationSchema = z
   })
   .catchall(z.any());
 export type MultiDestination = z.infer<typeof MultiDestinationSchema>;
-
-export const DetailOptionValueSchema = z.object({
-  available: z.boolean().optional(),
-  exists: z.boolean().optional(),
-  id: z.string().optional(),
-  label: z.string(),
-});
-export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
 
 export const FulfillmentDestinationCreateRequestSchema = z.object({
   id: z.string().optional(),
@@ -2123,6 +2123,12 @@ export const GetProductRequestSchema = z.object({
 });
 export type GetProductRequest = z.infer<typeof GetProductRequestSchema>;
 
+export const OptionSchema = z.object({
+  name: z.string(),
+  values: z.array(DetailOptionValueSchema).min(1),
+});
+export type Option = z.infer<typeof OptionSchema>;
+
 export const VariantElementSchema = z.object({
   availability: AvailabilityClassSchema.optional(),
   barcodes: z.array(PurpleBarcodeSchema).optional(),
@@ -2653,7 +2659,6 @@ export const ProductElementSchema = z.object({
 export type ProductElement = z.infer<typeof ProductElementSchema>;
 
 export const ProductClassSchema = z.object({
-  options: z.array(OptionElementSchema).optional(),
   selected: z.array(SelectedOptionSchema).optional(),
   categories: z.array(CategoryElementSchema).optional(),
   description: DescriptionClassSchema,
@@ -2662,6 +2667,7 @@ export const ProductClassSchema = z.object({
   list_price_range: ListPriceRangeClassSchema.optional(),
   media: z.array(MediaElementSchema).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
+  options: z.array(OptionSchema).optional(),
   price_range: ListPriceRangeClassSchema,
   rating: RatingClassSchema.optional(),
   tags: z.array(z.string()).optional(),
