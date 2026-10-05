@@ -355,12 +355,14 @@ export type Mcp = SchemaEndpoint;
 export const RestSchema = SchemaEndpointSchema;
 export type Rest = SchemaEndpoint;
 
-export const BuyerSchema = z.object({
-  email: z.string().optional(),
-  first_name: z.string().optional(),
-  last_name: z.string().optional(),
-  phone_number: z.string().optional(),
-});
+export const BuyerSchema = z
+  .object({
+    email: z.string().optional(),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    phone_number: z.string().optional(),
+  })
+  .catchall(z.any());
 export type Buyer = z.infer<typeof BuyerSchema>;
 export const BuyerClassSchema = BuyerSchema;
 export type BuyerClass = Buyer;
@@ -402,9 +404,11 @@ export type PostalAddress = z.infer<typeof PostalAddressSchema>;
 export const BillingAddressClassSchema = PostalAddressSchema;
 export type BillingAddressClass = PostalAddress;
 
-export const CredentialClassSchema = z.object({
-  type: z.string(),
-});
+export const CredentialClassSchema = z
+  .object({
+    type: z.string(),
+  })
+  .catchall(z.any());
 export type CredentialClass = z.infer<typeof CredentialClassSchema>;
 export const IdentityProviderSchema = CredentialClassSchema;
 export type IdentityProvider = CredentialClass;
@@ -446,10 +450,12 @@ export type ItemUpdateRequest = z.infer<typeof ItemUpdateRequestSchema>;
 export const ItemCreateRequestSchema = ItemUpdateRequestSchema;
 export type ItemCreateRequest = ItemUpdateRequest;
 
-export const ActionElementSchema = z.object({
-  config: z.record(z.string(), z.any()).optional(),
-  id: z.string().min(1),
-});
+export const ActionElementSchema = z
+  .object({
+    config: z.record(z.string(), z.any()).optional(),
+    id: z.string().min(1),
+  })
+  .catchall(z.any());
 export type ActionElement = z.infer<typeof ActionElementSchema>;
 
 export const PurpleMeasureSchema = z.object({
@@ -768,14 +774,16 @@ export type LineItemQuantity = z.infer<typeof LineItemQuantitySchema>;
 export const OrderLineItemQuantitySchema = LineItemQuantitySchema;
 export type OrderLineItemQuantity = LineItemQuantity;
 
-export const PaymentInstrumentSchema = z.object({
-  billing_address: BillingAddressClassSchema.optional(),
-  credential: CredentialClassSchema.optional(),
-  display: z.record(z.string(), z.any()).optional(),
-  handler_id: z.string(),
-  id: z.string(),
-  type: z.string(),
-});
+export const PaymentInstrumentSchema = z
+  .object({
+    billing_address: BillingAddressClassSchema.optional(),
+    credential: CredentialClassSchema.optional(),
+    display: z.record(z.string(), z.any()).optional(),
+    handler_id: z.string(),
+    id: z.string(),
+    type: z.string(),
+  })
+  .catchall(z.any());
 export type PaymentInstrument = z.infer<typeof PaymentInstrumentSchema>;
 
 export const SegmentValueSchema = z.object({
@@ -831,27 +839,33 @@ export const ShippingDestinationUpdateRequestSchema =
   ShippingDestinationCreateRequestSchema;
 export type ShippingDestinationUpdateRequest = ShippingDestinationCreateRequest;
 
-export const FulfillmentGroupCreateRequestSchema = z.object({
-  selected_option_id: z.union([z.null(), z.string()]).optional(),
-});
+export const FulfillmentGroupCreateRequestSchema = z
+  .object({
+    selected_option_id: z.union([z.null(), z.string()]).optional(),
+  })
+  .catchall(z.any());
 export type FulfillmentGroupCreateRequest = z.infer<
   typeof FulfillmentGroupCreateRequestSchema
 >;
 
-export const FulfillmentGroupUpdateRequestSchema = z.object({
-  id: z.string(),
-  selected_option_id: z.union([z.null(), z.string()]).optional(),
-});
+export const FulfillmentGroupUpdateRequestSchema = z
+  .object({
+    id: z.string(),
+    selected_option_id: z.union([z.null(), z.string()]).optional(),
+  })
+  .catchall(z.any());
 export type FulfillmentGroupUpdateRequest = z.infer<
   typeof FulfillmentGroupUpdateRequestSchema
 >;
 
-export const FulfillmentAvailableMethodResponseSchema = z.object({
-  description: z.string().optional(),
-  fulfillable_on: z.union([z.null(), z.string()]).optional(),
-  line_item_ids: z.array(z.string()),
-  type: z.string(),
-});
+export const FulfillmentAvailableMethodResponseSchema = z
+  .object({
+    description: z.string().optional(),
+    fulfillable_on: z.union([z.null(), z.string()]).optional(),
+    line_item_ids: z.array(z.string()),
+    type: z.string(),
+  })
+  .catchall(z.any());
 export type FulfillmentAvailableMethodResponse = z.infer<
   typeof FulfillmentAvailableMethodResponseSchema
 >;
@@ -873,15 +887,17 @@ export const BindingSchema = z.object({
 });
 export type Binding = FulfillmentDestinationResponse;
 
-export const FulfillmentOptionResponseSchema = z.object({
-  description: DescriptionClassSchema.optional(),
-  id: z.string(),
-  title: z.string(),
-  carrier: z.string().optional(),
-  earliest_fulfillment_time: z.string().datetime({ offset: true }).optional(),
-  latest_fulfillment_time: z.string().datetime({ offset: true }).optional(),
-  totals: z.array(LineItemResponseTotalSchema),
-});
+export const FulfillmentOptionResponseSchema = z
+  .object({
+    description: DescriptionClassSchema.optional(),
+    id: z.string(),
+    title: z.string(),
+    carrier: z.string().optional(),
+    earliest_fulfillment_time: z.string().datetime({ offset: true }).optional(),
+    latest_fulfillment_time: z.string().datetime({ offset: true }).optional(),
+    totals: z.array(LineItemResponseTotalSchema),
+  })
+  .catchall(z.any());
 export type FulfillmentOptionResponse = z.infer<
   typeof FulfillmentOptionResponseSchema
 >;
@@ -894,16 +910,18 @@ export type PriceClass = z.infer<typeof PriceClassSchema>;
 export const PriceFilterSchema = PriceClassSchema;
 export type PriceFilter = PriceClass;
 
-export const PolicySchema = z.object({
-  applies_to: z.array(z.string()).optional(),
-  description: DescriptionClassSchema,
-  type: z
-    .string()
-    .regex(
-      /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
-    ),
-  url: z.string().url().optional(),
-});
+export const PolicySchema = z
+  .object({
+    applies_to: z.array(z.string()).optional(),
+    description: DescriptionClassSchema,
+    type: z
+      .string()
+      .regex(
+        /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/
+      ),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
 export type Policy = z.infer<typeof PolicySchema>;
 export const PolicyElementSchema = PolicySchema;
 export type PolicyElement = Policy;
@@ -991,6 +1009,14 @@ export const VariantSellerSchema = z.object({
 export type VariantSeller = z.infer<typeof VariantSellerSchema>;
 export const PurpleSellerSchema = VariantSellerSchema;
 export type PurpleSeller = VariantSeller;
+
+export const DetailOptionValueSchema = z.object({
+  available: z.boolean().optional(),
+  exists: z.boolean().optional(),
+  id: z.string().optional(),
+  label: z.string(),
+});
+export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
 
 export const SearchRequestPaginationSchema = z.object({
   cursor: z.string().optional(),
@@ -1120,18 +1146,22 @@ export const HoursSchema = z.object({
 });
 export type Hours = z.infer<typeof HoursSchema>;
 
-export const AddressSchema = z.object({
-  address_country: z.string().optional(),
-  address_region: z.string().optional(),
-  postal_code: z.string().optional(),
-});
+export const AddressSchema = z
+  .object({
+    address_country: z.string().optional(),
+    address_region: z.string().optional(),
+    postal_code: z.string().optional(),
+  })
+  .catchall(z.any());
 export type Address = z.infer<typeof AddressSchema>;
 export const LocalitySchema = AddressSchema;
 export type Locality = Address;
 
-export const AmenitySchema = z.object({
-  description: z.string(),
-});
+export const AmenitySchema = z
+  .object({
+    description: z.string(),
+  })
+  .catchall(z.any());
 export type Amenity = z.infer<typeof AmenitySchema>;
 
 export const ExceptionHourElementSchema = z
@@ -1207,27 +1237,32 @@ export const InputSchema = z.object({
 });
 export type Input = z.infer<typeof InputSchema>;
 
-export const LocationSchema = z.object({
-  address: BillingAddressClassSchema.optional(),
-  id: z.string(),
-  name: z.string(),
-  amenities: z
-    .record(z.string(), AmenitySchema)
-    .refine(
-      (value) =>
-        Object.keys(value).every((key) =>
-          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
-            key
-          )
-        ),
-      { message: "Record keys must match the required pattern (propertyNames)" }
-    )
-    .optional(),
-  exception_hours: z.array(ExceptionHourElementSchema).optional(),
-  geo: GeoClassSchema.optional(),
-  hours: z.array(DailyHourElementSchema).optional(),
-  timezone: z.string().optional(),
-});
+export const LocationSchema = z
+  .object({
+    address: BillingAddressClassSchema.optional(),
+    id: z.string(),
+    name: z.string(),
+    amenities: z
+      .record(z.string(), AmenitySchema)
+      .refine(
+        (value) =>
+          Object.keys(value).every((key) =>
+            /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
+              key
+            )
+          ),
+        {
+          message:
+            "Record keys must match the required pattern (propertyNames)",
+        }
+      )
+      .optional(),
+    exception_hours: z.array(ExceptionHourElementSchema).optional(),
+    geo: GeoClassSchema.optional(),
+    hours: z.array(DailyHourElementSchema).optional(),
+    timezone: z.string().optional(),
+  })
+  .catchall(z.any());
 export type Location = z.infer<typeof LocationSchema>;
 
 export const BreakdownElementSchema = z.object({
@@ -1261,13 +1296,15 @@ export const BenefitElementSchema = z.object({
 });
 export type BenefitElement = z.infer<typeof BenefitElementSchema>;
 
-export const ScheduleElementSchema = z.object({
-  amount: z.number().int().gte(0).lte(9007199254740991),
-  description: DescriptionClassSchema,
-  due_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  type: z.string(),
-});
+export const ScheduleElementSchema = z
+  .object({
+    amount: z.number().int().gte(0).lte(9007199254740991),
+    description: DescriptionClassSchema,
+    due_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    type: z.string(),
+  })
+  .catchall(z.any());
 export type ScheduleElement = z.infer<typeof ScheduleElementSchema>;
 export const PaymentScheduleSchema = ScheduleElementSchema;
 export type PaymentSchedule = ScheduleElement;
@@ -1283,32 +1320,38 @@ export type AllowedCombinationElement = PurpleInstrumentGroup;
 export const InstrumentGroupSchema = PurpleInstrumentGroupSchema;
 export type InstrumentGroup = PurpleInstrumentGroup;
 
-export const PaymentInstrumentSplitPaymentsSchema = z.object({
-  billing_address: BillingAddressClassSchema.optional(),
-  credential: CredentialClassSchema.optional(),
-  display: z.record(z.string(), z.any()).optional(),
-  handler_id: z.string(),
-  id: z.string(),
-  type: z.string(),
-  amount: z.number().int().gte(0).lte(9007199254740991).optional(),
-});
+export const PaymentInstrumentSplitPaymentsSchema = z
+  .object({
+    billing_address: BillingAddressClassSchema.optional(),
+    credential: CredentialClassSchema.optional(),
+    display: z.record(z.string(), z.any()).optional(),
+    handler_id: z.string(),
+    id: z.string(),
+    type: z.string(),
+    amount: z.number().int().gte(0).lte(9007199254740991).optional(),
+  })
+  .catchall(z.any());
 export type PaymentInstrumentSplitPayments = z.infer<
   typeof PaymentInstrumentSplitPaymentsSchema
 >;
 
-export const ExtensionElementSchema = z.object({
-  description: z.string().optional(),
-  params: z.record(z.string(), z.any()).optional(),
-  uri: z.string().url(),
-});
+export const ExtensionElementSchema = z
+  .object({
+    description: z.string().optional(),
+    params: z.record(z.string(), z.any()).optional(),
+    uri: z.string().url(),
+  })
+  .catchall(z.any());
 export type ExtensionElement = z.infer<typeof ExtensionElementSchema>;
 
-export const PartElementSchema = z.object({
-  data: z.record(z.string(), z.any()).optional(),
-  kind: z.string().optional(),
-  text: z.string().optional(),
-  type: z.string().optional(),
-});
+export const PartElementSchema = z
+  .object({
+    data: z.record(z.string(), z.any()).optional(),
+    kind: z.string().optional(),
+    text: z.string().optional(),
+    type: z.string().optional(),
+  })
+  .catchall(z.any());
 export type PartElement = z.infer<typeof PartElementSchema>;
 
 export const EmbeddedTransportConfigSchema = z.object({
@@ -1319,11 +1362,13 @@ export type EmbeddedTransportConfig = z.infer<
   typeof EmbeddedTransportConfigSchema
 >;
 
-export const ErrorClassSchema = z.object({
-  code: z.number().int(),
-  data: z.any().optional(),
-  message: z.string(),
-});
+export const ErrorClassSchema = z
+  .object({
+    code: z.number().int(),
+    data: z.any().optional(),
+    message: z.string(),
+  })
+  .catchall(z.any());
 export type ErrorClass = z.infer<typeof ErrorClassSchema>;
 
 export const JsonRpc20EnvelopeSchema = z.object({
@@ -1336,15 +1381,19 @@ export const JsonRpc20EnvelopeSchema = z.object({
 });
 export type JsonRpc20Envelope = z.infer<typeof JsonRpc20EnvelopeSchema>;
 
-export const UcpAgentSchema = z.object({
-  profile: z.string(),
-});
+export const UcpAgentSchema = z
+  .object({
+    profile: z.string(),
+  })
+  .catchall(z.any());
 export type UcpAgent = z.infer<typeof UcpAgentSchema>;
 
-export const McpToolCallSchema = z.object({
-  text: z.string().optional(),
-  type: z.string(),
-});
+export const McpToolCallSchema = z
+  .object({
+    text: z.string().optional(),
+    type: z.string(),
+  })
+  .catchall(z.any());
 export type McpToolCall = z.infer<typeof McpToolCallSchema>;
 
 export const EcKeysCarryCrvXYSchema = z
@@ -1357,6 +1406,7 @@ export const EcKeysCarryCrvXYSchema = z
     x: z.string().optional(),
     y: z.string().optional(),
   })
+  .catchall(z.any())
   .superRefine((value, ctx) => {
     for (const rule of [
       {
@@ -1452,18 +1502,12 @@ export type AdjustmentLineItemClass = z.infer<
 export const AdjustmentLineItemSchema = AdjustmentLineItemClassSchema;
 export type AdjustmentLineItem = AdjustmentLineItemClass;
 
-export const MultiDestinationSchema = z.object({
-  method: z.string(),
-});
+export const MultiDestinationSchema = z
+  .object({
+    method: z.string(),
+  })
+  .catchall(z.any());
 export type MultiDestination = z.infer<typeof MultiDestinationSchema>;
-
-export const DetailOptionValueSchema = z.object({
-  available: z.boolean().optional(),
-  exists: z.boolean().optional(),
-  id: z.string().optional(),
-  label: z.string(),
-});
-export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
 
 export const FulfillmentDestinationCreateRequestSchema = z.object({
   id: z.string().optional(),
@@ -1477,30 +1521,36 @@ export const FulfillmentDestinationUpdateRequestSchema =
 export type FulfillmentDestinationUpdateRequest =
   FulfillmentDestinationCreateRequest;
 
-export const FulfillmentDestinationFilterSchema = z.object({
-  address_country: z.string().optional(),
-  address_region: z.string().optional(),
-  postal_code: z.string().optional(),
-  location: z.string().optional(),
-});
+export const FulfillmentDestinationFilterSchema = z
+  .object({
+    address_country: z.string().optional(),
+    address_region: z.string().optional(),
+    postal_code: z.string().optional(),
+    location: z.string().optional(),
+  })
+  .catchall(z.any());
 export type FulfillmentDestinationFilter = z.infer<
   typeof FulfillmentDestinationFilterSchema
 >;
 
-export const FulfillmentOptionBaseResponseSchema = z.object({
-  description: DescriptionClassSchema.optional(),
-  id: z.string(),
-  title: z.string(),
-});
+export const FulfillmentOptionBaseResponseSchema = z
+  .object({
+    description: DescriptionClassSchema.optional(),
+    id: z.string(),
+    title: z.string(),
+  })
+  .catchall(z.any());
 export type FulfillmentOptionBaseResponse = z.infer<
   typeof FulfillmentOptionBaseResponseSchema
 >;
 
-export const LocationSummarySchema = z.object({
-  address: BillingAddressClassSchema.optional(),
-  id: z.string(),
-  name: z.string(),
-});
+export const LocationSummarySchema = z
+  .object({
+    address: BillingAddressClassSchema.optional(),
+    id: z.string(),
+    name: z.string(),
+  })
+  .catchall(z.any());
 export type LocationSummary = z.infer<typeof LocationSummarySchema>;
 export const BusinessLocationDestinationCreateRequestSchema =
   LocationSummarySchema;
@@ -1509,12 +1559,14 @@ export const BusinessLocationDestinationUpdateRequestSchema =
   LocationSummarySchema;
 export type BusinessLocationDestinationUpdateRequest = LocationSummary;
 
-export const BusinessLocationDestinationResponseSchema = z.object({
-  address: BillingAddressClassSchema.optional(),
-  id: z.string(),
-  name: z.string(),
-  type: BusinessLocationDestinationResponseTypeSchema,
-});
+export const BusinessLocationDestinationResponseSchema = z
+  .object({
+    address: BillingAddressClassSchema.optional(),
+    id: z.string(),
+    name: z.string(),
+    type: BusinessLocationDestinationResponseTypeSchema,
+  })
+  .catchall(z.any());
 export type BusinessLocationDestinationResponse = z.infer<
   typeof BusinessLocationDestinationResponseSchema
 >;
@@ -1551,17 +1603,19 @@ export type ShippingDestinationResponse = z.infer<
   typeof ShippingDestinationResponseSchema
 >;
 
-export const CardCredentialSchema = z.object({
-  type: CardCredentialTypeSchema,
-  card_number_type: CardNumberTypeSchema,
-  cryptogram: z.string().optional(),
-  cvc: z.string().max(4).optional(),
-  eci_value: z.string().optional(),
-  expiry_month: z.number().int().optional(),
-  expiry_year: z.number().int().optional(),
-  name: z.string().optional(),
-  number: z.string().optional(),
-});
+export const CardCredentialSchema = z
+  .object({
+    type: CardCredentialTypeSchema,
+    card_number_type: CardNumberTypeSchema,
+    cryptogram: z.string().optional(),
+    cvc: z.string().max(4).optional(),
+    eci_value: z.string().optional(),
+    expiry_month: z.number().int().optional(),
+    expiry_year: z.number().int().optional(),
+    name: z.string().optional(),
+    number: z.string().optional(),
+  })
+  .catchall(z.any());
 export type CardCredential = z.infer<typeof CardCredentialSchema>;
 
 export const DisplaySchema = z.object({
@@ -1605,28 +1659,32 @@ export const MessageWarningSchema = z.object({
 });
 export type MessageWarning = z.infer<typeof MessageWarningSchema>;
 
-export const NetworkTokenCredentialSchema = z.object({
-  type: NetworkTokenCredentialTypeSchema,
-  cryptogram: z.string(),
-  eci_value: z.string().optional(),
-  expiry_month: z.number().int().optional(),
-  expiry_year: z.number().int().optional(),
-  name: z.string().optional(),
-  number: z.string(),
-  token_requestor_id: z.string().optional(),
-});
+export const NetworkTokenCredentialSchema = z
+  .object({
+    type: NetworkTokenCredentialTypeSchema,
+    cryptogram: z.string(),
+    eci_value: z.string().optional(),
+    expiry_month: z.number().int().optional(),
+    expiry_year: z.number().int().optional(),
+    name: z.string().optional(),
+    number: z.string(),
+    token_requestor_id: z.string().optional(),
+  })
+  .catchall(z.any());
 export type NetworkTokenCredential = z.infer<
   typeof NetworkTokenCredentialSchema
 >;
 
-export const PanCredentialSchema = z.object({
-  type: PanCredentialTypeSchema,
-  cvc: z.string().max(4).optional(),
-  expiry_month: z.number().int().optional(),
-  expiry_year: z.number().int().optional(),
-  name: z.string().optional(),
-  number: z.string(),
-});
+export const PanCredentialSchema = z
+  .object({
+    type: PanCredentialTypeSchema,
+    cvc: z.string().max(4).optional(),
+    expiry_month: z.number().int().optional(),
+    expiry_year: z.number().int().optional(),
+    name: z.string().optional(),
+    number: z.string(),
+  })
+  .catchall(z.any());
 export type PanCredential = z.infer<typeof PanCredentialSchema>;
 
 export const PaymentIdentitySchema = z.object({
@@ -1725,38 +1783,42 @@ export const UcpServiceSchema = z.object({
 });
 export type UcpService = z.infer<typeof UcpServiceSchema>;
 
-export const ContextSchema = z.object({
-  address_country: z.string().optional(),
-  address_region: z.string().optional(),
-  postal_code: z.string().optional(),
-  currency: z.string().optional(),
-  eligibility: z
-    .array(z.string())
-    .refine(
-      (items) =>
-        new Set(items.map((item) => JSON.stringify(item))).size ===
-        items.length,
-      { message: "Array items must be unique (uniqueItems)" }
-    )
-    .optional(),
-  intent: z.string().optional(),
-  language: z.string().optional(),
-  location: z.string().optional(),
-  payment: z.array(PurplePaymentSchema).optional(),
-});
+export const ContextSchema = z
+  .object({
+    address_country: z.string().optional(),
+    address_region: z.string().optional(),
+    postal_code: z.string().optional(),
+    currency: z.string().optional(),
+    eligibility: z
+      .array(z.string())
+      .refine(
+        (items) =>
+          new Set(items.map((item) => JSON.stringify(item))).size ===
+          items.length,
+        { message: "Array items must be unique (uniqueItems)" }
+      )
+      .optional(),
+    intent: z.string().optional(),
+    language: z.string().optional(),
+    location: z.string().optional(),
+    payment: z.array(PurplePaymentSchema).optional(),
+  })
+  .catchall(z.any());
 export type Context = z.infer<typeof ContextSchema>;
 export const ContextClassSchema = ContextSchema;
 export type ContextClass = Context;
 
-export const SelectedPaymentInstrumentSchema = z.object({
-  billing_address: BillingAddressClassSchema.optional(),
-  credential: CredentialClassSchema.optional(),
-  display: z.record(z.string(), z.any()).optional(),
-  handler_id: z.string(),
-  id: z.string(),
-  type: z.string(),
-  selected: z.boolean().optional(),
-});
+export const SelectedPaymentInstrumentSchema = z
+  .object({
+    billing_address: BillingAddressClassSchema.optional(),
+    credential: CredentialClassSchema.optional(),
+    display: z.record(z.string(), z.any()).optional(),
+    handler_id: z.string(),
+    id: z.string(),
+    type: z.string(),
+    selected: z.boolean().optional(),
+  })
+  .catchall(z.any());
 export type SelectedPaymentInstrument = z.infer<
   typeof SelectedPaymentInstrumentSchema
 >;
@@ -1995,29 +2057,35 @@ export type FulfillmentMethodUpdateRequest = z.infer<
   typeof FulfillmentMethodUpdateRequestSchema
 >;
 
-export const FulfillmentGroupResponseSchema = z.object({
-  id: z.string(),
-  line_item_ids: z.array(z.string()),
-  options: z.array(FulfillmentOptionResponseSchema).optional(),
-  selected_option_id: z.union([z.null(), z.string()]).optional(),
-});
+export const FulfillmentGroupResponseSchema = z
+  .object({
+    id: z.string(),
+    line_item_ids: z.array(z.string()),
+    options: z.array(FulfillmentOptionResponseSchema).optional(),
+    selected_option_id: z.union([z.null(), z.string()]).optional(),
+  })
+  .catchall(z.any());
 export type FulfillmentGroupResponse = z.infer<
   typeof FulfillmentGroupResponseSchema
 >;
 
-export const CartUpdateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemUpdateRequestSchema),
-  signals: SignalsClassSchema.optional(),
-});
+export const CartUpdateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemUpdateRequestSchema),
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CartUpdateRequest = z.infer<typeof CartUpdateRequestSchema>;
 
-export const SearchFiltersSchema = z.object({
-  categories: z.array(z.string()).optional(),
-  price: PriceClassSchema.optional(),
-});
+export const SearchFiltersSchema = z
+  .object({
+    categories: z.array(z.string()).optional(),
+    price: PriceClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 
 export const CatalogLookupSchema = z.object({
@@ -2054,6 +2122,12 @@ export const GetProductRequestSchema = z.object({
   signals: SignalsSchema.optional(),
 });
 export type GetProductRequest = z.infer<typeof GetProductRequestSchema>;
+
+export const OptionSchema = z.object({
+  name: z.string(),
+  values: z.array(DetailOptionValueSchema).min(1),
+});
+export type Option = z.infer<typeof OptionSchema>;
 
 export const VariantElementSchema = z.object({
   availability: AvailabilityClassSchema.optional(),
@@ -2115,26 +2189,30 @@ export type CompleteCheckoutRequestWithAp2 = z.infer<
   typeof CompleteCheckoutRequestWithAp2Schema
 >;
 
-export const LocationDistanceSchema = z.object({
-  center: GeoClassSchema,
-  max: z.number().gte(0),
-});
+export const LocationDistanceSchema = z
+  .object({
+    center: GeoClassSchema,
+    max: z.number().gte(0),
+  })
+  .catchall(z.any());
 export type LocationDistance = z.infer<typeof LocationDistanceSchema>;
 
-export const LocationFilterSchema = z.object({
-  amenities: z.array(z.string()).optional(),
-  hours: HoursSchema.optional(),
-  items: z
-    .array(z.string())
-    .min(1)
-    .refine(
-      (items) =>
-        new Set(items.map((item) => JSON.stringify(item))).size ===
-        items.length,
-      { message: "Array items must be unique (uniqueItems)" }
-    )
-    .optional(),
-});
+export const LocationFilterSchema = z
+  .object({
+    amenities: z.array(z.string()).optional(),
+    hours: HoursSchema.optional(),
+    items: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (items) =>
+          new Set(items.map((item) => JSON.stringify(item))).size ===
+          items.length,
+        { message: "Array items must be unique (uniqueItems)" }
+      )
+      .optional(),
+  })
+  .catchall(z.any());
 export type LocationFilter = z.infer<typeof LocationFilterSchema>;
 
 export const LocationServesSchema = z
@@ -2151,28 +2229,33 @@ export const LocationServesSchema = z
   });
 export type LocationServes = z.infer<typeof LocationServesSchema>;
 
-export const LocationElementSchema = z.object({
-  address: BillingAddressClassSchema.optional(),
-  id: z.string(),
-  name: z.string(),
-  amenities: z
-    .record(z.string(), AmenitySchema)
-    .refine(
-      (value) =>
-        Object.keys(value).every((key) =>
-          /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
-            key
-          )
-        ),
-      { message: "Record keys must match the required pattern (propertyNames)" }
-    )
-    .optional(),
-  exception_hours: z.array(ExceptionHourElementSchema).optional(),
-  geo: GeoClassSchema.optional(),
-  hours: z.array(DailyHourElementSchema).optional(),
-  timezone: z.string().optional(),
-  inputs: z.array(InputSchema).min(1),
-});
+export const LocationElementSchema = z
+  .object({
+    address: BillingAddressClassSchema.optional(),
+    id: z.string(),
+    name: z.string(),
+    amenities: z
+      .record(z.string(), AmenitySchema)
+      .refine(
+        (value) =>
+          Object.keys(value).every((key) =>
+            /^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
+              key
+            )
+          ),
+        {
+          message:
+            "Record keys must match the required pattern (propertyNames)",
+        }
+      )
+      .optional(),
+    exception_hours: z.array(ExceptionHourElementSchema).optional(),
+    geo: GeoClassSchema.optional(),
+    hours: z.array(DailyHourElementSchema).optional(),
+    timezone: z.string().optional(),
+    inputs: z.array(InputSchema).min(1),
+  })
+  .catchall(z.any());
 export type LocationElement = z.infer<typeof LocationElementSchema>;
 
 export const LocationSearchRequestSchema = z.object({
@@ -2186,9 +2269,11 @@ export const LocationSearchRequestSchema = z.object({
 });
 export type LocationSearchRequest = z.infer<typeof LocationSearchRequestSchema>;
 
-export const ScopePolicySchema = z.object({
-  description: DescriptionSchema.optional(),
-});
+export const ScopePolicySchema = z
+  .object({
+    description: DescriptionSchema.optional(),
+  })
+  .catchall(z.any());
 export type ScopePolicy = z.infer<typeof ScopePolicySchema>;
 
 export const MembershipRewardSchema = z.object({
@@ -2204,12 +2289,14 @@ export const MembershipTierSchema = z.object({
 });
 export type MembershipTier = z.infer<typeof MembershipTierSchema>;
 
-export const PurplePaymentTermSchema = z.object({
-  description: DescriptionClassSchema.optional(),
-  id: z.string(),
-  schedules: z.array(ScheduleElementSchema).min(1),
-  title: z.string(),
-});
+export const PurplePaymentTermSchema = z
+  .object({
+    description: DescriptionClassSchema.optional(),
+    id: z.string(),
+    schedules: z.array(ScheduleElementSchema).min(1),
+    title: z.string(),
+  })
+  .catchall(z.any());
 export type PurplePaymentTerm = z.infer<typeof PurplePaymentTermSchema>;
 
 export const OrderPaymentWithAcceptedTermSchema = z.object({
@@ -2235,13 +2322,15 @@ export type CheckoutWithSplitPaymentsPayment = z.infer<
   typeof CheckoutWithSplitPaymentsPaymentSchema
 >;
 
-export const ResultClassSchema = z.object({
-  contextId: z.string(),
-  kind: KindSchema,
-  messageId: z.string(),
-  parts: z.array(PartElementSchema).min(1),
-  role: RoleSchema,
-});
+export const ResultClassSchema = z
+  .object({
+    contextId: z.string(),
+    kind: KindSchema,
+    messageId: z.string(),
+    parts: z.array(PartElementSchema).min(1),
+    role: RoleSchema,
+  })
+  .catchall(z.any());
 export type ResultClass = z.infer<typeof ResultClassSchema>;
 
 export const EmbeddedProtocolMessageEnvelopeSchema = z.object({
@@ -2256,16 +2345,20 @@ export type EmbeddedProtocolMessageEnvelope = z.infer<
   typeof EmbeddedProtocolMessageEnvelopeSchema
 >;
 
-export const MetaSchema = z.object({
-  "idempotency-key": z.string().optional(),
-  "ucp-agent": UcpAgentSchema.optional(),
-});
+export const MetaSchema = z
+  .object({
+    "idempotency-key": z.string().optional(),
+    "ucp-agent": UcpAgentSchema.optional(),
+  })
+  .catchall(z.any());
 export type Meta = z.infer<typeof MetaSchema>;
 
-export const ResultSchema = z.object({
-  content: z.array(McpToolCallSchema).optional(),
-  structuredContent: z.record(z.string(), z.any()),
-});
+export const ResultSchema = z
+  .object({
+    content: z.array(McpToolCallSchema).optional(),
+    structuredContent: z.record(z.string(), z.any()),
+  })
+  .catchall(z.any());
 export type Result = z.infer<typeof ResultSchema>;
 
 export const AdjustmentSchema = z.object({
@@ -2298,15 +2391,17 @@ export type BusinessSplitPaymentsConfig = z.infer<
   typeof BusinessSplitPaymentsConfigSchema
 >;
 
-export const CardPaymentInstrumentSchema = z.object({
-  billing_address: BillingAddressClassSchema.optional(),
-  credential: CredentialClassSchema.optional(),
-  display: DisplaySchema.optional(),
-  handler_id: z.string(),
-  id: z.string(),
-  type: CardCredentialTypeSchema,
-  network: z.string().optional(),
-});
+export const CardPaymentInstrumentSchema = z
+  .object({
+    billing_address: BillingAddressClassSchema.optional(),
+    credential: CredentialClassSchema.optional(),
+    display: DisplaySchema.optional(),
+    handler_id: z.string(),
+    id: z.string(),
+    type: CardCredentialTypeSchema,
+    network: z.string().optional(),
+  })
+  .catchall(z.any());
 export type CardPaymentInstrument = z.infer<typeof CardPaymentInstrumentSchema>;
 
 export const PaymentSchema = z.object({
@@ -2352,23 +2447,27 @@ export const LineItemCreateRequestSchema = z.object({
 });
 export type LineItemCreateRequest = z.infer<typeof LineItemCreateRequestSchema>;
 
-export const CheckoutUpdateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemUpdateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-});
+export const CheckoutUpdateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemUpdateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutUpdateRequest = z.infer<typeof CheckoutUpdateRequestSchema>;
 export const CheckoutWithCartUpdateRequestSchema = CheckoutUpdateRequestSchema;
 export type CheckoutWithCartUpdateRequest = CheckoutUpdateRequest;
 
-export const CheckoutCompleteRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  payment: CheckoutCreateRequestPaymentSchema,
-  signals: SignalsClassSchema.optional(),
-});
+export const CheckoutCompleteRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    payment: CheckoutCreateRequestPaymentSchema,
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutCompleteRequest = z.infer<
   typeof CheckoutCompleteRequestSchema
 >;
@@ -2403,61 +2502,71 @@ export type LineItemElement = LineItem;
 export const OrderLineItemSchema = LineItemSchema;
 export type OrderLineItem = LineItem;
 
-export const BuyerWithConsentCreateRequestSchema = z.object({
-  email: z.string().optional(),
-  first_name: z.string().optional(),
-  last_name: z.string().optional(),
-  phone_number: z.string().optional(),
-  consent: z.record(z.string(), ConsentValueSchema).optional(),
-});
+export const BuyerWithConsentCreateRequestSchema = z
+  .object({
+    email: z.string().optional(),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    phone_number: z.string().optional(),
+    consent: z.record(z.string(), ConsentValueSchema).optional(),
+  })
+  .catchall(z.any());
 export type BuyerWithConsentCreateRequest = z.infer<
   typeof BuyerWithConsentCreateRequestSchema
 >;
 
-export const BuyerWithConsentUpdateRequestSchema = z.object({
-  email: z.string().optional(),
-  first_name: z.string().optional(),
-  last_name: z.string().optional(),
-  phone_number: z.string().optional(),
-  consent: z.record(z.string(), ConsentClassSchema).optional(),
-});
+export const BuyerWithConsentUpdateRequestSchema = z
+  .object({
+    email: z.string().optional(),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    phone_number: z.string().optional(),
+    consent: z.record(z.string(), ConsentClassSchema).optional(),
+  })
+  .catchall(z.any());
 export type BuyerWithConsentUpdateRequest = z.infer<
   typeof BuyerWithConsentUpdateRequestSchema
 >;
 
-export const BuyerWithConsentResponseSchema = z.object({
-  email: z.string().optional(),
-  first_name: z.string().optional(),
-  last_name: z.string().optional(),
-  phone_number: z.string().optional(),
-  consent: z.record(z.string(), BuyerConsentSchema).optional(),
-});
+export const BuyerWithConsentResponseSchema = z
+  .object({
+    email: z.string().optional(),
+    first_name: z.string().optional(),
+    last_name: z.string().optional(),
+    phone_number: z.string().optional(),
+    consent: z.record(z.string(), BuyerConsentSchema).optional(),
+  })
+  .catchall(z.any());
 export type BuyerWithConsentResponse = z.infer<
   typeof BuyerWithConsentResponseSchema
 >;
 
-export const CheckoutWithDiscountCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-  discounts: CheckoutWithDiscountCreateRequestDiscountsSchema.optional(),
-});
+export const CheckoutWithDiscountCreateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemCreateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+    discounts: CheckoutWithDiscountCreateRequestDiscountsSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithDiscountCreateRequest = z.infer<
   typeof CheckoutWithDiscountCreateRequestSchema
 >;
 
-export const CheckoutWithDiscountUpdateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemUpdateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-  discounts: CheckoutWithDiscountUpdateRequestDiscountsSchema.optional(),
-});
+export const CheckoutWithDiscountUpdateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemUpdateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+    discounts: CheckoutWithDiscountUpdateRequestDiscountsSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithDiscountUpdateRequest = z.infer<
   typeof CheckoutWithDiscountUpdateRequestSchema
 >;
@@ -2496,24 +2605,28 @@ export type FulfillmentMethodResponse = z.infer<
   typeof FulfillmentMethodResponseSchema
 >;
 
-export const CartCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  signals: SignalsClassSchema.optional(),
-});
+export const CartCreateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemCreateRequestSchema),
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CartCreateRequest = z.infer<typeof CartCreateRequestSchema>;
 
-export const CheckoutWithCartCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-  cart_id: z.string().optional(),
-});
+export const CheckoutWithCartCreateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemCreateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+    cart_id: z.string().optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithCartCreateRequest = z.infer<
   typeof CheckoutWithCartCreateRequestSchema
 >;
@@ -2546,7 +2659,6 @@ export const ProductElementSchema = z.object({
 export type ProductElement = z.infer<typeof ProductElementSchema>;
 
 export const ProductClassSchema = z.object({
-  options: z.array(OptionElementSchema).optional(),
   selected: z.array(SelectedOptionSchema).optional(),
   categories: z.array(CategoryElementSchema).optional(),
   description: DescriptionClassSchema,
@@ -2555,6 +2667,7 @@ export const ProductClassSchema = z.object({
   list_price_range: ListPriceRangeClassSchema.optional(),
   media: z.array(MediaElementSchema).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
+  options: z.array(OptionSchema).optional(),
   price_range: ListPriceRangeClassSchema,
   rating: RatingClassSchema.optional(),
   tags: z.array(z.string()).optional(),
@@ -2590,16 +2703,20 @@ export const PaymentWithTermsSchema = z.object({
 });
 export type PaymentWithTerms = z.infer<typeof PaymentWithTermsSchema>;
 
-export const A2AUcpMessageEnvelopeParamsSchema = z.object({
-  message: ResultClassSchema,
-});
+export const A2AUcpMessageEnvelopeParamsSchema = z
+  .object({
+    message: ResultClassSchema,
+  })
+  .catchall(z.any());
 export type A2AUcpMessageEnvelopeParams = z.infer<
   typeof A2AUcpMessageEnvelopeParamsSchema
 >;
 
-export const ArgumentsSchema = z.object({
-  meta: MetaSchema.optional(),
-});
+export const ArgumentsSchema = z
+  .object({
+    meta: MetaSchema.optional(),
+  })
+  .catchall(z.any());
 export type Arguments = z.infer<typeof ArgumentsSchema>;
 
 export const PaymentHandlerResponseSchema = z.object({
@@ -2666,14 +2783,16 @@ export const UcpSchema = z.object({
 });
 export type Ucp = z.infer<typeof UcpSchema>;
 
-export const CheckoutCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-});
+export const CheckoutCreateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemCreateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutCreateRequest = z.infer<typeof CheckoutCreateRequestSchema>;
 
 export const LineItemResponseSchema = z.object({
@@ -2770,147 +2889,163 @@ export const UcpResponseSchema = z.object({
 });
 export type UcpResponse = z.infer<typeof UcpResponseSchema>;
 
-export const CheckoutWithBuyerConsentCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerWithConsentCreateRequestSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-});
+export const CheckoutWithBuyerConsentCreateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerWithConsentCreateRequestSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemCreateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithBuyerConsentCreateRequest = z.infer<
   typeof CheckoutWithBuyerConsentCreateRequestSchema
 >;
 
-export const CheckoutWithBuyerConsentUpdateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerWithConsentUpdateRequestSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemUpdateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-});
+export const CheckoutWithBuyerConsentUpdateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerWithConsentUpdateRequestSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemUpdateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithBuyerConsentUpdateRequest = z.infer<
   typeof CheckoutWithBuyerConsentUpdateRequestSchema
 >;
 
-export const CheckoutWithBuyerConsentResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerWithConsentResponseSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithBuyerConsentResponseSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerWithConsentResponseSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+  })
+  .catchall(z.any());
 export type CheckoutWithBuyerConsentResponse = z.infer<
   typeof CheckoutWithBuyerConsentResponseSchema
 >;
 
-export const CheckoutWithDiscountResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithDiscountResponseSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-  discounts: CheckoutWithDiscountResponseDiscountsSchema.optional(),
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+    discounts: CheckoutWithDiscountResponseDiscountsSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithDiscountResponse = z.infer<
   typeof CheckoutWithDiscountResponseSchema
 >;
 
-export const CheckoutWithFulfillmentCreateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemCreateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-  fulfillment: FulfillmentCreateRequestSchema.optional(),
-});
+export const CheckoutWithFulfillmentCreateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemCreateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+    fulfillment: FulfillmentCreateRequestSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithFulfillmentCreateRequest = z.infer<
   typeof CheckoutWithFulfillmentCreateRequestSchema
 >;
 
-export const CheckoutWithFulfillmentUpdateRequestSchema = z.object({
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  line_items: z.array(LineItemUpdateRequestSchema),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  signals: SignalsClassSchema.optional(),
-  fulfillment: FulfillmentUpdateRequestSchema.optional(),
-});
+export const CheckoutWithFulfillmentUpdateRequestSchema = z
+  .object({
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    line_items: z.array(LineItemUpdateRequestSchema),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    signals: SignalsClassSchema.optional(),
+    fulfillment: FulfillmentUpdateRequestSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithFulfillmentUpdateRequest = z.infer<
   typeof CheckoutWithFulfillmentUpdateRequestSchema
 >;
@@ -2923,92 +3058,100 @@ export const FulfillmentResponseSchema = z.object({
 });
 export type FulfillmentResponse = z.infer<typeof FulfillmentResponseSchema>;
 
-export const CartResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema).optional(),
-  messages: z.array(MessageElementSchema).optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CartResponseSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema).optional(),
+    messages: z.array(MessageElementSchema).optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpResponseSchema,
-});
+    }),
+    ucp: UcpResponseSchema,
+  })
+  .catchall(z.any());
 export type CartResponse = z.infer<typeof CartResponseSchema>;
 
-export const CheckoutWithCartResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithCartResponseSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-  cart_id: z.string().optional(),
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+    cart_id: z.string().optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithCartResponse = z.infer<
   typeof CheckoutWithCartResponseSchema
 >;
@@ -3041,50 +3184,54 @@ export const SearchResponseSchema = z.object({
 });
 export type SearchResponse = z.infer<typeof SearchResponseSchema>;
 
-export const CheckoutWithAp2MandateSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithAp2MandateSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-  ap2: CheckoutWithAp2MandateAp2Schema.optional(),
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+    ap2: CheckoutWithAp2MandateAp2Schema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithAp2Mandate = z.infer<
   typeof CheckoutWithAp2MandateSchema
 >;
@@ -3108,142 +3255,154 @@ export type LocationSearchResponse = z.infer<
   typeof LocationSearchResponseSchema
 >;
 
-export const CheckoutWithLoyaltySchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithLoyaltySchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-  loyalty: z.record(z.string(), LoyaltyMembershipSchema).optional(),
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+    loyalty: z.record(z.string(), LoyaltyMembershipSchema).optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithLoyalty = z.infer<typeof CheckoutWithLoyaltySchema>;
 
-export const CheckoutWithPaymentTermsSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutWithPaymentTermsPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithPaymentTermsSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutWithPaymentTermsPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+  })
+  .catchall(z.any());
 export type CheckoutWithPaymentTerms = z.infer<
   typeof CheckoutWithPaymentTermsSchema
 >;
 
-export const CheckoutWithSplitPaymentsSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutWithSplitPaymentsPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithSplitPaymentsSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutWithSplitPaymentsPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+  })
+  .catchall(z.any());
 export type CheckoutWithSplitPayments = z.infer<
   typeof CheckoutWithSplitPaymentsSchema
 >;
@@ -3258,18 +3417,22 @@ export const A2AUcpMessageEnvelopeSchema = z.object({
 });
 export type A2AUcpMessageEnvelope = z.infer<typeof A2AUcpMessageEnvelopeSchema>;
 
-export const McpToolCallEnvelopeParamsSchema = z.object({
-  arguments: ArgumentsSchema,
-  name: z.string().min(1),
-});
+export const McpToolCallEnvelopeParamsSchema = z
+  .object({
+    arguments: ArgumentsSchema,
+    name: z.string().min(1),
+  })
+  .catchall(z.any());
 export type McpToolCallEnvelopeParams = z.infer<
   typeof McpToolCallEnvelopeParamsSchema
 >;
 
-export const UcpProfileDocumentSchema = z.object({
-  keys: z.array(EcKeysCarryCrvXYSchema).optional(),
-  ucp: UcpResponseSchema,
-});
+export const UcpProfileDocumentSchema = z
+  .object({
+    keys: z.array(EcKeysCarryCrvXYSchema).optional(),
+    ucp: UcpResponseSchema,
+  })
+  .catchall(z.any());
 export type UcpProfileDocument = z.infer<typeof UcpProfileDocumentSchema>;
 
 export const ErrorResponseSchema = z.object({
@@ -3286,49 +3449,53 @@ export type UcpDiscoveryProfilePayment = z.infer<
   typeof UcpDiscoveryProfilePaymentSchema
 >;
 
-export const CheckoutResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutResponseSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+  })
+  .catchall(z.any());
 export type CheckoutResponse = z.infer<typeof CheckoutResponseSchema>;
 
 export const OrderSchema = z.object({
@@ -3371,50 +3538,54 @@ export const OrderSchema = z.object({
 });
 export type Order = z.infer<typeof OrderSchema>;
 
-export const CheckoutWithFulfillmentResponseSchema = z.object({
-  actions: z.record(z.string(), z.array(ActionElementSchema).min(1)).optional(),
-  attribution: z.record(z.string(), z.string()).optional(),
-  buyer: BuyerClassSchema.optional(),
-  context: ContextClassSchema.optional(),
-  continue_url: z.string().url().optional(),
-  currency: z.string(),
-  expires_at: z.string().datetime({ offset: true }).optional(),
-  id: z.string(),
-  line_items: z.array(LineItemResponseSchema),
-  links: z.array(LinkElementSchema),
-  messages: z.array(MessageElementSchema).optional(),
-  order: OrderClassSchema.optional(),
-  payment: CheckoutCreateRequestPaymentSchema.optional(),
-  policies: z.array(PolicyElementSchema).optional(),
-  signals: SignalsClassSchema.optional(),
-  status: CheckoutResponseStatusSchema,
-  totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
+export const CheckoutWithFulfillmentResponseSchema = z
+  .object({
+    actions: z
+      .record(z.string(), z.array(ActionElementSchema).min(1))
+      .optional(),
+    attribution: z.record(z.string(), z.string()).optional(),
+    buyer: BuyerClassSchema.optional(),
+    context: ContextClassSchema.optional(),
+    continue_url: z.string().url().optional(),
+    currency: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+    id: z.string(),
+    line_items: z.array(LineItemResponseSchema),
+    links: z.array(LinkElementSchema),
+    messages: z.array(MessageElementSchema).optional(),
+    order: OrderClassSchema.optional(),
+    payment: CheckoutCreateRequestPaymentSchema.optional(),
+    policies: z.array(PolicyElementSchema).optional(),
+    signals: SignalsClassSchema.optional(),
+    status: CheckoutResponseStatusSchema,
+    totals: z.array(CheckoutResponseTotalSchema).superRefine((items, ctx) => {
+      for (const rule of [
+        { property: "type", value: "subtotal", min: 1, max: 1 },
+        { property: "type", value: "total", min: 1, max: 1 },
+      ]) {
+        const matches = items.filter(
+          (item) =>
+            item != null &&
+            (item as Record<string, unknown>)[rule.property] === rule.value
+        ).length;
+        if (rule.min !== undefined && matches < rule.min) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
+          });
+        }
+        if (rule.max !== undefined && matches > rule.max) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
+          });
+        }
       }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  }),
-  ucp: UcpCheckoutResponseSchema,
-  fulfillment: FulfillmentResponseSchema.optional(),
-});
+    }),
+    ucp: UcpCheckoutResponseSchema,
+    fulfillment: FulfillmentResponseSchema.optional(),
+  })
+  .catchall(z.any());
 export type CheckoutWithFulfillmentResponse = z.infer<
   typeof CheckoutWithFulfillmentResponseSchema
 >;
@@ -3552,10 +3723,12 @@ export type PermalinkCapabilityBusiness = z.infer<
   typeof PermalinkCapabilityBusinessSchema
 >;
 
-export const IdentityLinkingBusinessConfigSchema = z.object({
-  providers: z.record(z.string(), z.array(IdentityProviderSchema)).optional(),
-  scopes: z.record(z.string(), ScopePolicySchema),
-});
+export const IdentityLinkingBusinessConfigSchema = z
+  .object({
+    providers: z.record(z.string(), z.array(IdentityProviderSchema)).optional(),
+    scopes: z.record(z.string(), ScopePolicySchema),
+  })
+  .catchall(z.any());
 export type IdentityLinkingBusinessConfig = z.infer<
   typeof IdentityLinkingBusinessConfigSchema
 >;
