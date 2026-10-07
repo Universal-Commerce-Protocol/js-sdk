@@ -85,7 +85,7 @@ if (parseResult.success) {
 
 ### Prerequisites
 
-This project uses `npm` for package management and `typescript` for building.
+This project uses `npm` for package management, `typescript` for building, and the [`ucp-schema`](https://github.com/Universal-Commerce-Protocol/ucp-schema) CLI for model generation.
 
 ### Generating Models
 

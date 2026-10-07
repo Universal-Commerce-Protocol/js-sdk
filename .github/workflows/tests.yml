@@ -84,10 +84,13 @@ jobs:
         with:
           python-version: "3.x"
 
-      # quicktype and typescript are locked by package-lock.json, so `npm ci`
-      # pins the generator toolchain deterministically (no floating range).
+      # json-schema-to-zod and typescript are locked by package-lock.json, so
+      # `npm ci` pins the generator toolchain deterministically.
       - name: Install dependencies
         run: npm ci
+
+      - name: Install ucp-schema
+        run: cargo install --git https://github.com/Universal-Commerce-Protocol/ucp-schema.git --branch feat/codegen-subtype-discovery ucp-schema
 
       # generate_models.sh auto-detects the source/ layout that
       # release/2026-08-25 ships and writes src/spec_generated.ts in place.

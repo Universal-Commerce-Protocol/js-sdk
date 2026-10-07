@@ -189,8 +189,13 @@ for (const [label, schemaName, extra] of [
       ...extra,
     });
     assert.equal(result.success, false);
+    const allIssues = result.error.issues.flatMap((issue) =>
+      issue.unionErrors
+        ? issue.unionErrors.flatMap((unionErr) => unionErr.issues)
+        : [issue]
+    );
     assert.ok(
-      result.error.issues.some(
+      allIssues.some(
         (issue) => issue.path.join(".") === "destinations.0.postal_code"
       ),
       `expected an issue at destinations.0.postal_code, got ${JSON.stringify(result.error.issues)}`
@@ -242,10 +247,6 @@ for (const [label, schemaName, extra] of [
   });
 
   test(`${label} request never silently drops destinations, whatever the method type`, () => {
-    // The flat zod target cannot express the per-branch if/then: the
-    // projection types `destinations` by the only branch that admits it on
-    // requests (shipping). Whatever the verdict for other method types, the
-    // one outcome that is never acceptable is a success that lost the data.
     const schema = g[schemaName];
     assert.ok(schema, `${schemaName} is not exported`);
     for (const type of ["pickup", "curbside"]) {
@@ -298,21 +299,41 @@ const postalAddressOptional = {
 };
 
 const oracle = {
-  FulfillmentMethodCreateRequestSchema: {
+  ShippingMethodCreateRequestSchema: {
     destinations: "optional",
     groups: "optional",
     selected_destination_id: "optional",
     type: "required",
   },
-  FulfillmentMethodUpdateRequestSchema: {
+  FulfillmentMethodCreateRequestBaseSchema: {
+    groups: "optional",
+    selected_destination_id: "optional",
+    type: "required",
+  },
+  ShippingMethodUpdateRequestSchema: {
     destinations: "optional",
+    groups: "optional",
+    id: "optional",
+    line_item_ids: "required",
+    selected_destination_id: "optional",
+    type: "required",
+  },
+  FulfillmentMethodUpdateRequestBaseSchema: {
     groups: "optional",
     id: "optional",
     line_item_ids: "required",
     selected_destination_id: "optional",
     type: "optional",
   },
-  FulfillmentMethodResponseSchema: {
+  FulfillmentMethodBaseSchema: {
+    destinations: "optional",
+    groups: "optional",
+    id: "required",
+    line_item_ids: "required",
+    selected_destination_id: "optional",
+    type: "required",
+  },
+  ShippingMethodResponseSchema: {
     destinations: "optional",
     groups: "optional",
     id: "required",
@@ -357,15 +378,7 @@ const oracle = {
     line_item_ids: "required",
     type: "required",
   },
-  FulfillmentDestinationCreateRequestSchema: {
-    id: "optional",
-    type: "optional",
-  },
-  FulfillmentDestinationUpdateRequestSchema: {
-    id: "optional",
-    type: "optional",
-  },
-  FulfillmentDestinationResponseSchema: { id: "required", type: "required" },
+  FulfillmentDestinationBaseSchema: { id: "required", type: "required" },
   ShippingDestinationCreateRequestSchema: {
     ...postalAddressOptional,
     id: "optional",
@@ -399,30 +412,30 @@ for (const [name, expected] of Object.entries(oracle)) {
 
 test("request destinations are typed by the shipping branch; response destinations by the base", () => {
   assert.equal(
-    itemsOf(g.FulfillmentMethodCreateRequestSchema, "destinations"),
+    itemsOf(g.ShippingMethodCreateRequestSchema, "destinations"),
     g.ShippingDestinationCreateRequestSchema
   );
   assert.equal(
-    itemsOf(g.FulfillmentMethodUpdateRequestSchema, "destinations"),
+    itemsOf(g.ShippingMethodUpdateRequestSchema, "destinations"),
     g.ShippingDestinationUpdateRequestSchema
   );
   assert.equal(
-    itemsOf(g.FulfillmentMethodResponseSchema, "destinations"),
+    itemsOf(g.FulfillmentMethodBaseSchema, "destinations"),
     g.FulfillmentDestinationResponseSchema
   );
 });
 
 test("groups and methods are typed by the matching variant", () => {
   assert.equal(
-    itemsOf(g.FulfillmentMethodCreateRequestSchema, "groups"),
+    itemsOf(g.ShippingMethodCreateRequestSchema, "groups"),
     g.FulfillmentGroupCreateRequestSchema
   );
   assert.equal(
-    itemsOf(g.FulfillmentMethodUpdateRequestSchema, "groups"),
+    itemsOf(g.ShippingMethodUpdateRequestSchema, "groups"),
     g.FulfillmentGroupUpdateRequestSchema
   );
   assert.equal(
-    itemsOf(g.FulfillmentMethodResponseSchema, "groups"),
+    itemsOf(g.FulfillmentMethodBaseSchema, "groups"),
     g.FulfillmentGroupResponseSchema
   );
   assert.equal(
@@ -479,13 +492,7 @@ test("FulfillmentGroupResponseSchema still requires id and line_item_ids", () =>
 // --- compatibility: the unified names keep resolving to the response shape --
 
 const compatibilityAliases = [
-  ["AvailableMethodElement", "FulfillmentAvailableMethodResponse"],
   ["BusinessLocationDestination", "BusinessLocationDestinationResponse"],
-  [
-    "BusinessLocationDestinationType",
-    "BusinessLocationDestinationResponseType",
-  ],
-  ["DestinationElement", "FulfillmentDestinationResponse"],
   ["Fulfillment", "FulfillmentResponse"],
   ["FulfillmentAvailableMethod", "FulfillmentAvailableMethodResponse"],
   ["FulfillmentDestination", "FulfillmentDestinationResponse"],
@@ -493,11 +500,7 @@ const compatibilityAliases = [
   ["FulfillmentMethod", "FulfillmentMethodResponse"],
   ["FulfillmentOption", "FulfillmentOptionResponse"],
   ["FulfillmentOptionBase", "FulfillmentOptionBaseResponse"],
-  ["FulfillmentOptionElement", "FulfillmentOptionResponse"],
-  ["GroupElement", "FulfillmentGroupResponse"],
-  ["MethodElement", "FulfillmentMethodResponse"],
   ["ShippingDestination", "ShippingDestinationResponse"],
-  ["ShippingDestinationType", "ShippingDestinationCreateRequestType"],
 ];
 
 for (const [alias, target] of compatibilityAliases) {
@@ -508,21 +511,17 @@ for (const [alias, target] of compatibilityAliases) {
 }
 
 test("FulfillmentSchema keeps meaning the checkout fulfillment container, not order.json's inline fulfillment", () => {
-  // Once types/fulfillment.json stopped occupying the bare title, quicktype
-  // handed the name `Fulfillment` to order.json's anonymous `fulfillment`
-  // property ({ events, expectations }), silently changing what an existing
-  // export means. That inline object keeps its historical name.
   assert.deepEqual(Object.keys(fieldTable(g.FulfillmentSchema)), [
     "available_methods",
     "methods",
   ]);
-  assert.deepEqual(Object.keys(fieldTable(g.FulfillmentClassSchema)), [
+  assert.deepEqual(Object.keys(fieldTable(g.OrderFulfillmentSchema)), [
     "events",
     "expectations",
   ]);
   assert.equal(
     unwrap(unwrap(g.OrderSchema).shape.fulfillment),
-    g.FulfillmentClassSchema
+    g.OrderFulfillmentSchema
   );
 });
 
