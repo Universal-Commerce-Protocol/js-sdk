@@ -24,15 +24,15 @@
     "build:noEmit": "tsc --noEmit",
     "generate": "./generate_models.sh",
     "pretest": "tsc src/spec_generated.ts src/extensions.ts --outDir tests/.dist --module commonjs --moduleResolution node --target ES2020 --strict --esModuleInterop --skipLibCheck",
-    "test": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test tests/*.test.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "json-schema-to-zod": "^2.7.0",
     "prettier": "^3.9.6",
-    "quicktype": "^26.0.0",
     "typescript": "^5.4.5"
   },
   "publishConfig": {

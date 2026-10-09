@@ -42,7 +42,7 @@ const {
   OrderConfirmationSchema,
   LineItemQuantityRefSchema,
   AdjustmentLineItemSchema,
-  EventLineItemSchema,
+  FulfillmentEventLineItemSchema,
   ExpectationLineItemSchema,
   CheckoutResponseMessageSchema,
   LookupResponseMessageSchema,
@@ -51,12 +51,9 @@ const {
   FulfillmentEventSchema,
   AdjustmentSchema,
   FulfillmentOptionSchema,
-  PurpleUnitPriceSchema,
+  UnitPriceSchema,
   UcpSchema,
   CapabilityDiscoverySchema,
-  A2ASchema,
-  EmbeddedSchema,
-  SchemaEndpointSchema,
   UcpServiceSchema,
   LookupResponseSchema,
   LocationLookupResponseSchema,
@@ -70,9 +67,8 @@ const {
   PaymentTermSchema,
   FulfillmentDestinationSchema,
   FulfillmentDestinationResponseSchema,
-  FulfillmentDestinationCreateRequestSchema,
-  FulfillmentDestinationUpdateRequestSchema,
-  DestinationElementSchema,
+  ShippingDestinationCreateRequestSchema,
+  ShippingDestinationUpdateRequestSchema,
   BindingSchema,
 } = require("./.dist/spec_generated.js");
 
@@ -123,21 +119,31 @@ test("AdjustmentLineItemSchema allows a signed integer quantity", () => {
   assert.ok(rejects(AdjustmentLineItemSchema, { id: "li_1", quantity: 1.5 }));
 });
 
-test("EventLineItemSchema rejects a zero quantity (minimum: 1)", () => {
-  assert.ok(rejects(EventLineItemSchema, { id: "li_1", quantity: 0 }));
+test("FulfillmentEventLineItemSchema rejects a zero quantity (minimum: 1)", () => {
+  assert.ok(
+    rejects(FulfillmentEventLineItemSchema, { id: "li_1", quantity: 0 })
+  );
 });
 
-test("EventLineItemSchema rejects a negative quantity (minimum: 1)", () => {
-  assert.ok(rejects(EventLineItemSchema, { id: "li_1", quantity: -1 }));
+test("FulfillmentEventLineItemSchema rejects a negative quantity (minimum: 1)", () => {
+  assert.ok(
+    rejects(FulfillmentEventLineItemSchema, { id: "li_1", quantity: -1 })
+  );
 });
 
-test("EventLineItemSchema rejects a fractional quantity (type: integer)", () => {
-  assert.ok(rejects(EventLineItemSchema, { id: "li_1", quantity: 1.5 }));
+test("FulfillmentEventLineItemSchema rejects a fractional quantity (type: integer)", () => {
+  assert.ok(
+    rejects(FulfillmentEventLineItemSchema, { id: "li_1", quantity: 1.5 })
+  );
 });
 
-test("EventLineItemSchema accepts a positive integer quantity", () => {
-  assert.ok(accepts(EventLineItemSchema, { id: "li_1", quantity: 1 }));
-  assert.ok(accepts(EventLineItemSchema, { id: "li_1", quantity: 3 }));
+test("FulfillmentEventLineItemSchema accepts a positive integer quantity", () => {
+  assert.ok(
+    accepts(FulfillmentEventLineItemSchema, { id: "li_1", quantity: 1 })
+  );
+  assert.ok(
+    accepts(FulfillmentEventLineItemSchema, { id: "li_1", quantity: 3 })
+  );
 });
 
 test("ExpectationLineItemSchema rejects a zero quantity (minimum: 1)", () => {
@@ -193,12 +199,12 @@ test("shared Measure requires an integer value and accepts zero or signed values
 });
 
 test("unit price measure and reference require positive integer values", () => {
-  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(0.5, 100)));
-  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(1, 0.5)));
-  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(0, 100)));
-  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(1, 0)));
-  assert.ok(rejects(PurpleUnitPriceSchema, unitPrice(-1, 100)));
-  assert.ok(accepts(PurpleUnitPriceSchema, unitPrice(1, 100)));
+  assert.ok(rejects(UnitPriceSchema, unitPrice(0.5, 100)));
+  assert.ok(rejects(UnitPriceSchema, unitPrice(1, 0.5)));
+  assert.ok(rejects(UnitPriceSchema, unitPrice(0, 100)));
+  assert.ok(rejects(UnitPriceSchema, unitPrice(1, 0)));
+  assert.ok(rejects(UnitPriceSchema, unitPrice(-1, 100)));
+  assert.ok(accepts(UnitPriceSchema, unitPrice(1, 100)));
 });
 
 // --- Projected request constraints -----------------------------------------
@@ -318,11 +324,13 @@ test("TotalsResponseSchema does not require display_text for well-known types", 
     "fee",
     "total",
   ]) {
-    assert.ok(accepts(TotalsResponseSchema, { type, amount: 100 }), type);
+    const amount =
+      type === "discount" || type === "items_discount" ? -100 : 100;
+    assert.ok(accepts(TotalsResponseSchema, { type, amount }), type);
     assert.ok(
       accepts(TotalsResponseSchema, {
         type,
-        amount: 100,
+        amount,
         display_text: "Label",
       }),
       `${type} with display_text`
@@ -404,7 +412,9 @@ test("AvailablePaymentInstrumentSchema accepts valid constraints", () => {
   assert.ok(
     accepts(AvailablePaymentInstrumentSchema, {
       type: "card",
-      constraints: { network: "visa" },
+      constraints: {
+        properties: { network: { enum: ["visa", "mastercard"] } },
+      },
     })
   );
   assert.ok(accepts(AvailablePaymentInstrumentSchema, { type: "card" }));
@@ -585,7 +595,6 @@ test("CapabilityResponseSchema accepts valid extends names", () => {
 test("CapabilityDiscoverySchema rejects an empty extends array", () => {
   assert.ok(
     rejects(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "https://ucp.dev/schemas/shopping/checkout.json",
       spec: "https://ucp.dev/specification/checkout",
       version: "2026-04-08",
@@ -597,7 +606,6 @@ test("CapabilityDiscoverySchema rejects an empty extends array", () => {
 test("CapabilityDiscoverySchema rejects invalid extends names", () => {
   assert.ok(
     rejects(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "https://ucp.dev/schemas/shopping/checkout.json",
       spec: "https://ucp.dev/specification/checkout",
       version: "2026-04-08",
@@ -606,7 +614,6 @@ test("CapabilityDiscoverySchema rejects invalid extends names", () => {
   );
   assert.ok(
     rejects(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "https://ucp.dev/schemas/shopping/checkout.json",
       spec: "https://ucp.dev/specification/checkout",
       version: "2026-04-08",
@@ -618,7 +625,6 @@ test("CapabilityDiscoverySchema rejects invalid extends names", () => {
 test("CapabilityDiscoverySchema accepts valid extends names", () => {
   assert.ok(
     accepts(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "https://ucp.dev/schemas/shopping/checkout.json",
       spec: "https://ucp.dev/specification/checkout",
       version: "2026-04-08",
@@ -627,7 +633,6 @@ test("CapabilityDiscoverySchema accepts valid extends names", () => {
   );
   assert.ok(
     accepts(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "https://ucp.dev/schemas/shopping/checkout.json",
       spec: "https://ucp.dev/specification/checkout",
       version: "2026-04-08",
@@ -647,22 +652,15 @@ test("UcpSchema enforces the discovery version pattern", () => {
 test("discovery declarations enforce URI fields", () => {
   assert.ok(
     rejects(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "/schemas/checkout.json",
       spec: "not-a-url",
       version: "2026-04-08",
     })
   );
-  assert.ok(rejects(A2ASchema, { endpoint: "agent.example/a2a" }));
-  assert.ok(rejects(EmbeddedSchema, { schema: "./embedded.json" }));
-  assert.ok(
-    rejects(SchemaEndpointSchema, {
-      endpoint: "merchant.example/ucp",
-      schema: "/openapi.json",
-    })
-  );
   assert.ok(
     rejects(UcpServiceSchema, {
+      transport: "rest",
+      endpoint: "merchant.example/ucp",
       spec: "specification/overview",
       version: "2026-04-08",
     })
@@ -670,24 +668,15 @@ test("discovery declarations enforce URI fields", () => {
 
   assert.ok(
     accepts(CapabilityDiscoverySchema, {
-      name: "dev.ucp.shopping.checkout",
       schema: "https://ucp.dev/schemas/shopping/checkout.json",
       spec: "https://ucp.dev/specification/checkout",
       version: "2026-04-08",
     })
   );
-  assert.ok(accepts(A2ASchema, { endpoint: "https://agent.example/a2a" }));
-  assert.ok(
-    accepts(EmbeddedSchema, { schema: "https://agent.example/embedded.json" })
-  );
-  assert.ok(
-    accepts(SchemaEndpointSchema, {
-      endpoint: "https://merchant.example/ucp",
-      schema: "https://merchant.example/openapi.json",
-    })
-  );
   assert.ok(
     accepts(UcpServiceSchema, {
+      transport: "rest",
+      endpoint: "https://merchant.example/ucp",
       spec: "https://ucp.dev/specification/overview",
       version: "2026-04-08",
     })
@@ -734,7 +723,10 @@ test("PaymentHandlerResponseSchema enforces the entity version pattern", () => {
       version: "2026-04-08",
       id: "handler",
       available_instruments: [
-        { type: "card", constraints: { network: "visa" } },
+        {
+          type: "card",
+          constraints: { properties: { network: { const: "visa" } } },
+        },
       ],
     })
   );
@@ -973,7 +965,7 @@ test("UcpDiscoveryProfileSchema emits keys array per RFC 7517", () => {
         payment_handlers: {},
         version: "2026-08-25",
       },
-      keys: [{ kid: "key-1", kty: "OKP" }],
+      keys: [{ kid: "key-1", kty: "OKP", crv: "Ed25519", x: "11qY" }],
     })
   );
 });
@@ -1014,6 +1006,12 @@ test("NetworkTokenCredentialSchema validates network token credentials", () => {
 test("ProviderSchema validates identity provider configuration", () => {
   assert.ok(
     accepts(ProviderSchema, {
+      type: "oauth2",
+      auth_url: "https://auth.example.com",
+    })
+  );
+  assert.ok(
+    rejects(ProviderSchema, {
       type: "oauth2",
     })
   );
@@ -1078,9 +1076,8 @@ test("the destination family accepts the spec's published shipping_address examp
   for (const schema of [
     FulfillmentDestinationSchema,
     FulfillmentDestinationResponseSchema,
-    FulfillmentDestinationCreateRequestSchema,
-    FulfillmentDestinationUpdateRequestSchema,
-    DestinationElementSchema,
+    ShippingDestinationCreateRequestSchema,
+    ShippingDestinationUpdateRequestSchema,
   ]) {
     assert.ok(accepts(schema, SPEC_DESTINATION_EXAMPLE));
   }
@@ -1098,6 +1095,7 @@ test("a destination type is not held to a reverse-domain pattern", () => {
     accepts(FulfillmentDestinationSchema, {
       type: "business_location",
       id: "d1",
+      name: "Downtown Store",
     })
   );
 });

@@ -45,7 +45,12 @@ const rejects = (schema, value) => schema.safeParse(value).success === false;
 // version, plus available_instruments / schema / spec. This is the case the
 // pre-fix (and the naive one-property patch) schema WRONGLY REJECTED.
 const goldenHandler = {
-  available_instruments: [{ constraints: { brands: ["visa"] }, type: "card" }],
+  available_instruments: [
+    {
+      constraints: { properties: { brands: { enum: ["visa"] } } },
+      type: "card",
+    },
+  ],
   id: "giftpay",
   schema: "https://spck.dev/fixture/handlers/giftpay/schema.json",
   spec: "https://spck.dev/fixture/handlers/giftpay",

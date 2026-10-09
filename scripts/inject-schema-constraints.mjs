@@ -60,17 +60,43 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-const [, , schemaDirArg, targetArg] = process.argv;
+const cliArgs = process.argv.slice(2);
 
-if (!schemaDirArg || !targetArg) {
+if (cliArgs.length < 2) {
   console.error(
-    "Usage: node scripts/inject-schema-constraints.mjs <schema_dir> <generated.ts>"
+    "Usage: node scripts/inject-schema-constraints.mjs <schema_dir_or_types_json> [...more_schema_sources] <generated.ts>"
   );
   process.exit(1);
 }
 
-const schemaDir = path.resolve(schemaDirArg);
+const targetArg = cliArgs[cliArgs.length - 1];
+const schemaSourceArgs = cliArgs.slice(0, -1);
+const orderedSources = [...schemaSourceArgs].sort((left, right) => {
+  const leftIsFile = fs.statSync(path.resolve(left)).isFile() ? 0 : 1;
+  const rightIsFile = fs.statSync(path.resolve(right)).isFile() ? 0 : 1;
+  return leftIsFile - rightIsFile;
+});
 const targetPath = path.resolve(targetArg);
+
+function toSchemaIdent(rawName) {
+  if (typeof rawName !== "string" || !rawName.trim()) {
+    return null;
+  }
+  const pascal = rawName
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+  if (!pascal) {
+    return null;
+  }
+  const ident = /^[0-9]/.test(pascal) ? `_${pascal}` : pascal;
+  return ident.endsWith("Schema") && ident !== "Schema"
+    ? ident
+    : `${ident}Schema`;
+}
 
 // --- JSON Schema loading + $ref resolution ---------------------------------
 
@@ -610,12 +636,14 @@ const variantUnionIndex = new Map();
 // setKey -> Map(signature -> rules).
 const variantUnionFieldIndex = new Map();
 
-function recordObject(properties, file, propertyFiles) {
+function recordObject(properties, file, propertyFiles, extraKeys = []) {
   const setKey = Object.keys(properties).sort().join(",");
-  if (!constraintIndex.has(setKey)) {
-    constraintIndex.set(setKey, new Map());
+  const keys = [setKey, ...extraKeys];
+  for (const key of keys) {
+    if (!constraintIndex.has(key)) {
+      constraintIndex.set(key, new Map());
+    }
   }
-  const byProperty = constraintIndex.get(setKey);
   for (const [name, propertyNode] of Object.entries(properties)) {
     // Each property carries the file it was authored in (it may have been
     // inherited into this object via a cross-file `$ref`/`allOf`, in which
@@ -624,23 +652,28 @@ function recordObject(properties, file, propertyFiles) {
     const propertyFile = (propertyFiles && propertyFiles[name]) || file;
     const described = describeConstraint(propertyNode, propertyFile);
     if (described) {
-      if (!byProperty.has(name)) {
-        byProperty.set(name, new Map());
+      for (const key of keys) {
+        const byProperty = constraintIndex.get(key);
+        if (!byProperty.has(name)) {
+          byProperty.set(name, new Map());
+        }
+        byProperty.get(name).set(described.signature, described.descriptor);
       }
-      byProperty.get(name).set(described.signature, described.descriptor);
     } else {
       // No constraints here. Record the base kind so this occurrence competes
       // with any constrained occurrence of the same kind in this property set.
       const kind = schemaBaseKind(propertyNode, propertyFile);
       if (kind !== null) {
-        if (!unconstrainedKindIndex.has(setKey)) {
-          unconstrainedKindIndex.set(setKey, new Map());
+        for (const key of keys) {
+          if (!unconstrainedKindIndex.has(key)) {
+            unconstrainedKindIndex.set(key, new Map());
+          }
+          const kindsByProperty = unconstrainedKindIndex.get(key);
+          if (!kindsByProperty.has(name)) {
+            kindsByProperty.set(name, new Set());
+          }
+          kindsByProperty.get(name).add(kind);
         }
-        const kindsByProperty = unconstrainedKindIndex.get(setKey);
-        if (!kindsByProperty.has(name)) {
-          kindsByProperty.set(name, new Set());
-        }
-        kindsByProperty.get(name).add(kind);
       }
     }
     const describedUnion = describeStringArrayUnionConstraint(
@@ -648,16 +681,18 @@ function recordObject(properties, file, propertyFiles) {
       propertyFile
     );
     if (describedUnion) {
-      if (!stringArrayUnionIndex.has(setKey)) {
-        stringArrayUnionIndex.set(setKey, new Map());
+      for (const key of keys) {
+        if (!stringArrayUnionIndex.has(key)) {
+          stringArrayUnionIndex.set(key, new Map());
+        }
+        const unionByProperty = stringArrayUnionIndex.get(key);
+        if (!unionByProperty.has(name)) {
+          unionByProperty.set(name, new Map());
+        }
+        unionByProperty
+          .get(name)
+          .set(describedUnion.signature, describedUnion.descriptor);
       }
-      const unionByProperty = stringArrayUnionIndex.get(setKey);
-      if (!unionByProperty.has(name)) {
-        unionByProperty.set(name, new Map());
-      }
-      unionByProperty
-        .get(name)
-        .set(describedUnion.signature, describedUnion.descriptor);
     }
   }
 }
@@ -671,7 +706,7 @@ function recordObject(properties, file, propertyFiles) {
  * key constraint resolves to a literal pattern. `propertyNames` on an `allOf`
  * branch is followed like the scalar merge (first branch wins).
  */
-function recordPropertyNames(node, properties, file) {
+function recordPropertyNames(node, properties, file, extraKeys = []) {
   let propertyNames = node.propertyNames;
   let additionalProperties = node.additionalProperties;
   if (propertyNames === undefined && Array.isArray(node.allOf)) {
@@ -695,13 +730,15 @@ function recordPropertyNames(node, properties, file) {
   const setKey = Object.keys(properties).sort().join(",");
   const descriptor = { pattern };
   const signature = JSON.stringify(descriptor);
-  if (!propertyNamesIndex.has(setKey)) {
-    propertyNamesIndex.set(setKey, new Map());
+  for (const key of [setKey, ...extraKeys]) {
+    if (!propertyNamesIndex.has(key)) {
+      propertyNamesIndex.set(key, new Map());
+    }
+    propertyNamesIndex.get(key).set(signature, descriptor);
   }
-  propertyNamesIndex.get(setKey).set(signature, descriptor);
 }
 
-function recordMinProperties(node, properties) {
+function recordMinProperties(node, properties, extraKeys = []) {
   let minProperties = node.minProperties;
   let additionalProperties = node.additionalProperties;
   if (minProperties === undefined && Array.isArray(node.allOf)) {
@@ -724,13 +761,15 @@ function recordMinProperties(node, properties) {
     retainAdditionalProperties: additionalProperties !== false,
   };
   const signature = JSON.stringify(descriptor);
-  if (!minPropertiesIndex.has(setKey)) {
-    minPropertiesIndex.set(setKey, new Map());
+  for (const key of [setKey, ...extraKeys]) {
+    if (!minPropertiesIndex.has(key)) {
+      minPropertiesIndex.set(key, new Map());
+    }
+    minPropertiesIndex.get(key).set(signature, descriptor);
   }
-  minPropertiesIndex.get(setKey).set(signature, descriptor);
 }
 
-function recordMaxProperties(node, properties) {
+function recordMaxProperties(node, properties, extraKeys = []) {
   let maxProperties = node.maxProperties;
   let additionalProperties = node.additionalProperties;
   if (maxProperties === undefined && Array.isArray(node.allOf)) {
@@ -753,10 +792,12 @@ function recordMaxProperties(node, properties) {
     retainAdditionalProperties: additionalProperties !== false,
   };
   const signature = JSON.stringify(descriptor);
-  if (!maxPropertiesIndex.has(setKey)) {
-    maxPropertiesIndex.set(setKey, new Map());
+  for (const key of [setKey, ...extraKeys]) {
+    if (!maxPropertiesIndex.has(key)) {
+      maxPropertiesIndex.set(key, new Map());
+    }
+    maxPropertiesIndex.get(key).set(signature, descriptor);
   }
-  maxPropertiesIndex.get(setKey).set(signature, descriptor);
 }
 
 /**
@@ -801,11 +842,13 @@ function collectDependentRequired(node, file, seen = new Set(), depth = 0) {
   return maps;
 }
 
-function recordDependentRequired(node, properties, file) {
+function recordDependentRequired(node, properties, file, extraKeys = []) {
   const dependentsBySubject = new Map();
   for (const map of collectDependentRequired(node, file)) {
     for (const [subject, dependents] of Object.entries(map)) {
-      if (!Array.isArray(dependents) || !(subject in properties)) {
+      const allowsSubject =
+        subject in properties || node.additionalProperties === true;
+      if (!Array.isArray(dependents) || !allowsSubject) {
         continue;
       }
       const fields = dependents.filter(
@@ -825,12 +868,19 @@ function recordDependentRequired(node, properties, file) {
   const rules = [...dependentsBySubject]
     .map(([subject, fields]) => [subject, [...fields].sort()])
     .sort(([left], [right]) => left.localeCompare(right));
+  const required = Array.isArray(node.required)
+    ? [...new Set(node.required)].sort()
+    : [];
   const setKey = Object.keys(properties).sort().join(",");
-  const signature = JSON.stringify(rules);
-  if (!dependentRequiredIndex.has(setKey)) {
-    dependentRequiredIndex.set(setKey, new Map());
+  const signature = JSON.stringify({ rules, required });
+  for (const key of [setKey, ...extraKeys]) {
+    if (!dependentRequiredIndex.has(key)) {
+      dependentRequiredIndex.set(key, new Map());
+    }
+    dependentRequiredIndex
+      .get(key)
+      .set(signature, { rules, required: new Set(required) });
   }
-  dependentRequiredIndex.get(setKey).set(signature, rules);
 }
 
 function numericBounds(node) {
@@ -972,7 +1022,7 @@ function describeConditionalRule(branch, properties) {
   return { kind: "numeric", discriminator, values, negated, target, ...bounds };
 }
 
-function recordConditionalRules(node, properties) {
+function recordConditionalRules(node, properties, extraKeys = []) {
   const branches = [];
   let unsupported = false;
   if ("if" in node || "then" in node || "else" in node) {
@@ -1015,8 +1065,10 @@ function recordConditionalRules(node, properties) {
   );
   const setKey = Object.keys(properties).sort().join(",");
   const signature = JSON.stringify(rules);
-  if (!conditionalIndex.has(setKey)) conditionalIndex.set(setKey, new Map());
-  conditionalIndex.get(setKey).set(signature, rules);
+  for (const key of [setKey, ...extraKeys]) {
+    if (!conditionalIndex.has(key)) conditionalIndex.set(key, new Map());
+    conditionalIndex.get(key).set(signature, rules);
+  }
 }
 
 /**
@@ -1233,7 +1285,10 @@ function recordVariantUnionRules(node, file) {
   }
 }
 
-function walkSchema(node, file, seen = new Set(), depth = 0) {
+const topLevelArrayIndex = new Map();
+const seenNameKeys = new Set();
+
+function walkSchema(node, file, seen = new Set(), depth = 0, explicitName = null) {
   if (!node || typeof node !== "object" || depth > 64) {
     return;
   }
@@ -1244,21 +1299,42 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
     }
     seen.add(key);
     const resolved = resolveRef(node.$ref, file);
-    walkSchema(resolved.node, resolved.file, seen, depth + 1);
+    walkSchema(resolved.node, resolved.file, seen, depth + 1, explicitName);
     return;
+  }
+  const schemaIdent = toSchemaIdent(explicitName);
+  const arrayIdent =
+    schemaIdent ||
+    (typeof node.title === "string" ? toSchemaIdent(node.title) : null);
+  if (node.type === "array" && arrayIdent) {
+    const described = describeConstraint(node, file);
+    if (described) {
+      if (!topLevelArrayIndex.has(arrayIdent)) {
+        topLevelArrayIndex.set(arrayIdent, new Map());
+      }
+      topLevelArrayIndex
+        .get(arrayIdent)
+        .set(described.signature, described.descriptor);
+    }
   }
   const resolvedObject = resolveObject(node, file);
   if (resolvedObject) {
+    const nameKey = schemaIdent ? `name:${schemaIdent}` : null;
+    if (nameKey) {
+      seenNameKeys.add(nameKey);
+    }
+    const extraKeys = nameKey ? [nameKey] : [];
     recordObject(
       resolvedObject.properties,
       resolvedObject.file,
-      resolvedObject.propertyFiles
+      resolvedObject.propertyFiles,
+      extraKeys
     );
-    recordPropertyNames(node, resolvedObject.properties, file);
-    recordMinProperties(node, resolvedObject.properties);
-    recordMaxProperties(node, resolvedObject.properties);
-    recordConditionalRules(node, resolvedObject.properties);
-    recordDependentRequired(node, resolvedObject.properties, file);
+    recordPropertyNames(node, resolvedObject.properties, file, extraKeys);
+    recordMinProperties(node, resolvedObject.properties, extraKeys);
+    recordMaxProperties(node, resolvedObject.properties, extraKeys);
+    recordConditionalRules(node, resolvedObject.properties, extraKeys);
+    recordDependentRequired(node, resolvedObject.properties, file, extraKeys);
   }
   recordVariantUnionRules(node, file);
   if (node.properties && typeof node.properties === "object") {
@@ -1279,8 +1355,8 @@ function walkSchema(node, file, seen = new Set(), depth = 0) {
     }
   }
   if (node.$defs && typeof node.$defs === "object") {
-    for (const child of Object.values(node.$defs)) {
-      walkSchema(child, file, new Set(seen), depth + 1);
+    for (const [defName, child] of Object.entries(node.$defs)) {
+      walkSchema(child, file, new Set(seen), depth + 1, defName);
     }
   }
 }
@@ -1298,271 +1374,232 @@ function collectSchemaFiles(directory) {
   return out;
 }
 
-for (const file of collectSchemaFiles(schemaDir)) {
-  try {
-    walkSchema(loadDocument(file), file);
-  } catch {
-    // Ignore unreadable / non-schema JSON files.
-  }
-}
-
-// Resolve each (setKey, property) to a single unambiguous descriptor.
-// setKey -> Map(propertyName -> descriptor)
+const resolvedTopLevelArrays = new Map();
 const resolvedIndex = new Map();
-const ambiguous = [];
-for (const [setKey, byProperty] of constraintIndex) {
-  const resolvedProperties = new Map();
-  const unconstrainedKinds = unconstrainedKindIndex.get(setKey);
-  for (const [name, bySignature] of byProperty) {
-    if (bySignature.size !== 1) {
-      ambiguous.push({ setKey, name, count: bySignature.size });
-      continue;
-    }
-    const descriptor = [...bySignature.values()][0];
-    // An occurrence of the same base kind that declares no constraint is a
-    // conflicting contract, not an absence of evidence: the shared generated
-    // object must satisfy both, so neither side's rules may be injected.
-    const kind = descriptorBaseKind(descriptor);
-    if (kind !== null && unconstrainedKinds?.get(name)?.has(kind)) {
-      ambiguous.push({ setKey, name, count: bySignature.size + 1 });
-      continue;
-    }
-    resolvedProperties.set(name, descriptor);
-  }
-  if (resolvedProperties.size) {
-    resolvedIndex.set(setKey, resolvedProperties);
-  }
-}
-
-// Resolve constrained scalar-union properties using the same ambiguity guard as
-// ordinary field constraints. A coincidental generated object shape reused with
-// a different string|array branch contract must not inherit either contract.
 const resolvedStringArrayUnions = new Map();
-for (const [setKey, byProperty] of stringArrayUnionIndex) {
-  const resolvedProperties = new Map();
-  for (const [name, bySignature] of byProperty) {
-    if (bySignature.size === 1) {
-      resolvedProperties.set(name, [...bySignature.values()][0]);
-    } else {
-      ambiguous.push({ setKey, name, count: bySignature.size });
+const resolvedPropertyNames = new Map();
+const resolvedMinProperties = new Map();
+const resolvedMaxProperties = new Map();
+const resolvedConditionals = new Map();
+const resolvedDependentRequired = new Map();
+const resolvedVariantUnions = new Map();
+let ambiguous = [];
+
+function resetAndBuildIndexes(schemaDir) {
+  constraintIndex.clear();
+  unconstrainedKindIndex.clear();
+  stringArrayUnionIndex.clear();
+  propertyNamesIndex.clear();
+  minPropertiesIndex.clear();
+  maxPropertiesIndex.clear();
+  dependentRequiredIndex.clear();
+  conditionalIndex.clear();
+  variantUnionIndex.clear();
+  variantUnionFieldIndex.clear();
+  topLevelArrayIndex.clear();
+  seenNameKeys.clear();
+
+  resolvedTopLevelArrays.clear();
+  resolvedIndex.clear();
+  resolvedStringArrayUnions.clear();
+  resolvedPropertyNames.clear();
+  resolvedMinProperties.clear();
+  resolvedMaxProperties.clear();
+  resolvedConditionals.clear();
+  resolvedDependentRequired.clear();
+  resolvedVariantUnions.clear();
+  ambiguous = [];
+
+  const schemaFiles = fs.statSync(schemaDir).isDirectory()
+    ? collectSchemaFiles(schemaDir)
+    : [schemaDir];
+
+  for (const file of schemaFiles) {
+    try {
+      walkSchema(loadDocument(file), file);
+    } catch {
+      // Ignore unreadable / non-schema JSON files.
     }
   }
-  if (resolvedProperties.size) {
-    resolvedStringArrayUnions.set(setKey, resolvedProperties);
+
+  for (const [schemaIdent, bySignature] of topLevelArrayIndex) {
+    if (bySignature.size === 1) {
+      resolvedTopLevelArrays.set(schemaIdent, [...bySignature.values()][0]);
+    }
+  }
+
+  // Resolve each (setKey, property) to a single unambiguous descriptor.
+  // setKey -> Map(propertyName -> descriptor)
+  for (const [setKey, byProperty] of constraintIndex) {
+    const isNameKey = setKey.startsWith("name:");
+    const resolvedProperties = new Map();
+    const unconstrainedKinds = unconstrainedKindIndex.get(setKey);
+    for (const [name, bySignature] of byProperty) {
+      if (bySignature.size !== 1) {
+        if (!isNameKey) {
+          ambiguous.push({ setKey, name, count: bySignature.size });
+        }
+        continue;
+      }
+      const descriptor = [...bySignature.values()][0];
+      // An occurrence of the same base kind that declares no constraint is a
+      // conflicting contract, not an absence of evidence: the shared generated
+      // object must satisfy both, so neither side's rules may be injected.
+      const kind = descriptorBaseKind(descriptor);
+      if (kind !== null && unconstrainedKinds?.get(name)?.has(kind)) {
+        if (!isNameKey) {
+          ambiguous.push({ setKey, name, count: bySignature.size + 1 });
+        }
+        continue;
+      }
+      resolvedProperties.set(name, descriptor);
+    }
+    if (resolvedProperties.size) {
+      resolvedIndex.set(setKey, resolvedProperties);
+    }
+  }
+
+  // Resolve constrained scalar-union properties using the same ambiguity guard as
+  // ordinary field constraints. A coincidental generated object shape reused with
+  // a different string|array branch contract must not inherit either contract.
+  for (const [setKey, byProperty] of stringArrayUnionIndex) {
+    const isNameKey = setKey.startsWith("name:");
+    const resolvedProperties = new Map();
+    for (const [name, bySignature] of byProperty) {
+      if (bySignature.size === 1) {
+        resolvedProperties.set(name, [...bySignature.values()][0]);
+      } else if (!isNameKey) {
+        ambiguous.push({ setKey, name, count: bySignature.size });
+      }
+    }
+    if (resolvedProperties.size) {
+      resolvedStringArrayUnions.set(setKey, resolvedProperties);
+    }
+  }
+
+  // Resolve the object-level propertyNames index to one descriptor per set,
+  // dropping any set that carried conflicting patterns (mirrors the scalar
+  // ambiguity guard so a coincidental property-set clash never over-restricts).
+  // setKey -> descriptor
+  for (const [setKey, bySignature] of propertyNamesIndex) {
+    if (bySignature.size === 1) {
+      resolvedPropertyNames.set(setKey, [...bySignature.values()][0]);
+    } else if (!setKey.startsWith("name:")) {
+      ambiguous.push({
+        setKey,
+        name: "<propertyNames>",
+        count: bySignature.size,
+      });
+    }
+  }
+
+  for (const [setKey, bySignature] of minPropertiesIndex) {
+    if (bySignature.size === 1) {
+      resolvedMinProperties.set(setKey, [...bySignature.values()][0]);
+    } else if (!setKey.startsWith("name:")) {
+      ambiguous.push({
+        setKey,
+        name: "<minProperties>",
+        count: bySignature.size,
+      });
+    }
+  }
+
+  for (const [setKey, bySignature] of maxPropertiesIndex) {
+    if (bySignature.size === 1) {
+      resolvedMaxProperties.set(setKey, [...bySignature.values()][0]);
+    } else if (!setKey.startsWith("name:")) {
+      ambiguous.push({
+        setKey,
+        name: "<maxProperties>",
+        count: bySignature.size,
+      });
+    }
+  }
+
+  // Only inject conditional rules when every occurrence of a property set agrees
+  // on the exact non-empty rule list. This includes empty signatures, preventing
+  // an unrelated object with the same shape from inheriting conditional logic.
+  for (const [setKey, bySignature] of conditionalIndex) {
+    if (bySignature.size === 1) {
+      const rules = [...bySignature.values()][0];
+      if (rules.length) resolvedConditionals.set(setKey, rules);
+    } else if (!setKey.startsWith("name:")) {
+      ambiguous.push({ setKey, name: "<conditional>", count: bySignature.size });
+    }
+  }
+
+  // dependentRequired resolves like the if/then rules: every occurrence of a
+  // property set must agree on the exact rule list, empty lists included.
+  for (const [setKey, bySignature] of dependentRequiredIndex) {
+    const occurrences = [...bySignature.values()];
+    const candidateRules = new Map();
+    let conflictingSubject = false;
+    for (const occ of occurrences) {
+      for (const [subject, deps] of occ.rules) {
+        const prev = candidateRules.get(subject);
+        if (prev && JSON.stringify(prev) !== JSON.stringify(deps)) {
+          conflictingSubject = true;
+        }
+        candidateRules.set(subject, deps);
+      }
+    }
+    const mergedRules = [...candidateRules.entries()].sort(([a], [b]) =>
+      a.localeCompare(b)
+    );
+    const unanimous =
+      !conflictingSubject &&
+      mergedRules.every(([subject, deps]) =>
+        occurrences.every((occ) => {
+          const match = occ.rules.find(([s]) => s === subject);
+          if (match) {
+            return JSON.stringify(match[1]) === JSON.stringify(deps);
+          }
+          return deps.every((dep) => occ.required.has(dep));
+        })
+      );
+    if (unanimous) {
+      if (mergedRules.length) resolvedDependentRequired.set(setKey, mergedRules);
+    } else if (!setKey.startsWith("name:")) {
+      ambiguous.push({
+        setKey,
+        name: "<dependentRequired>",
+        count: bySignature.size,
+      });
+    }
+  }
+
+  // Variant-union rules resolve like the other indexes: a single agreed rule
+  // list per property set, or nothing. A set claimed by BOTH an if/then rule
+  // list and a variant union is a cross-index conflict: neither is injected.
+  for (const [setKey, bySignature] of variantUnionIndex) {
+    if (bySignature.size !== 1) {
+      ambiguous.push({
+        setKey,
+        name: "<variant-union>",
+        count: bySignature.size,
+      });
+      continue;
+    }
+    if (resolvedConditionals.has(setKey)) {
+      resolvedConditionals.delete(setKey);
+      ambiguous.push({ setKey, name: "<variant-union/conditional>", count: 2 });
+      continue;
+    }
+    const requiredRules = [...bySignature.values()][0];
+    const fields = variantUnionFieldIndex.get(setKey);
+    if (fields?.size > 1) {
+      ambiguous.push({
+        setKey,
+        name: "<variant-union-field>",
+        count: fields.size,
+      });
+      continue;
+    }
+    const fieldRules = fields ? [...fields.values()][0] : [];
+    resolvedVariantUnions.set(setKey, [...requiredRules, ...fieldRules]);
   }
 }
-
-// Resolve the object-level propertyNames index to one descriptor per set,
-// dropping any set that carried conflicting patterns (mirrors the scalar
-// ambiguity guard so a coincidental property-set clash never over-restricts).
-// setKey -> descriptor
-const resolvedPropertyNames = new Map();
-for (const [setKey, bySignature] of propertyNamesIndex) {
-  if (bySignature.size === 1) {
-    resolvedPropertyNames.set(setKey, [...bySignature.values()][0]);
-  } else {
-    ambiguous.push({
-      setKey,
-      name: "<propertyNames>",
-      count: bySignature.size,
-    });
-  }
-}
-
-const resolvedMinProperties = new Map();
-for (const [setKey, bySignature] of minPropertiesIndex) {
-  if (bySignature.size === 1) {
-    resolvedMinProperties.set(setKey, [...bySignature.values()][0]);
-  } else {
-    ambiguous.push({
-      setKey,
-      name: "<minProperties>",
-      count: bySignature.size,
-    });
-  }
-}
-
-const resolvedMaxProperties = new Map();
-for (const [setKey, bySignature] of maxPropertiesIndex) {
-  if (bySignature.size === 1) {
-    resolvedMaxProperties.set(setKey, [...bySignature.values()][0]);
-  } else {
-    ambiguous.push({
-      setKey,
-      name: "<maxProperties>",
-      count: bySignature.size,
-    });
-  }
-}
-
-// Only inject conditional rules when every occurrence of a property set agrees
-// on the exact non-empty rule list. This includes empty signatures, preventing
-// an unrelated object with the same shape from inheriting conditional logic.
-const resolvedConditionals = new Map();
-for (const [setKey, bySignature] of conditionalIndex) {
-  if (bySignature.size === 1) {
-    const rules = [...bySignature.values()][0];
-    if (rules.length) resolvedConditionals.set(setKey, rules);
-  } else {
-    ambiguous.push({ setKey, name: "<conditional>", count: bySignature.size });
-  }
-}
-
-// dependentRequired resolves like the if/then rules: every occurrence of a
-// property set must agree on the exact rule list, empty lists included.
-const resolvedDependentRequired = new Map();
-for (const [setKey, bySignature] of dependentRequiredIndex) {
-  if (bySignature.size === 1) {
-    const rules = [...bySignature.values()][0];
-    if (rules.length) resolvedDependentRequired.set(setKey, rules);
-  } else {
-    ambiguous.push({
-      setKey,
-      name: "<dependentRequired>",
-      count: bySignature.size,
-    });
-  }
-}
-
-// Variant-union rules resolve like the other indexes: a single agreed rule
-// list per property set, or nothing. A set claimed by BOTH an if/then rule
-// list and a variant union is a cross-index conflict: neither is injected.
-const resolvedVariantUnions = new Map();
-for (const [setKey, bySignature] of variantUnionIndex) {
-  if (bySignature.size !== 1) {
-    ambiguous.push({
-      setKey,
-      name: "<variant-union>",
-      count: bySignature.size,
-    });
-    continue;
-  }
-  if (resolvedConditionals.has(setKey)) {
-    resolvedConditionals.delete(setKey);
-    ambiguous.push({ setKey, name: "<variant-union/conditional>", count: 2 });
-    continue;
-  }
-  const requiredRules = [...bySignature.values()][0];
-  const fields = variantUnionFieldIndex.get(setKey);
-  if (fields?.size > 1) {
-    ambiguous.push({
-      setKey,
-      name: "<variant-union-field>",
-      count: fields.size,
-    });
-    continue;
-  }
-  const fieldRules = fields ? [...fields.values()][0] : [];
-  resolvedVariantUnions.set(setKey, [...requiredRules, ...fieldRules]);
-}
-
-// --- Shared {id,quantity} line-item reference: contextual split --------------
-//
-// adjustment / fulfillment_event / expectation all declare
-// `line_items[].quantity` as `type: integer`, but only fulfillment_event and
-// expectation also add `minimum: 1`; the adjustment quantity is deliberately
-// signed (negative values represent returns/exchanges). quicktype merges the
-// three into a single shared LineItemQuantityRefSchema object, so the generic
-// ambiguity guard above leaves the whole set untouched (two conflicting
-// quantity signatures under one property set). We split the two `minimum: 1`
-// aliases into standalone objects carrying `.int().gte(1)` and keep the signed
-// adjustment on the shared `.int()` alone.
-//
-// Gated strictly on schema evidence inside the "id,quantity" property set: a
-// signed descriptor ({int}) AND a {int, minimum:1} descriptor must both be
-// present. A coincidental same-shape object can never trigger the split.
-const QUANTITY_SPLIT_TARGETS = ["EventLineItem", "ExpectationLineItem"];
-const sharedQuantitySplitNeeded = (() => {
-  const byProperty = constraintIndex.get("id,quantity");
-  if (!byProperty) return false;
-  const quantity = byProperty.get("quantity");
-  if (!quantity || quantity.size < 2) return false;
-  const signatures = [...quantity.keys()];
-  return (
-    signatures.includes(JSON.stringify({ int: true })) &&
-    signatures.some((signature) => JSON.parse(signature).minimum === 1)
-  );
-})();
-
-// --- Shared {display_text,scale,unit,value} Measure: contextual split --------
-//
-// `common/types/measure.json` (and `adjustment.json`'s `line_items[].measure`)
-// declares `value` as a signed safe integer (`minimum: -9007199254740991`),
-// while `shopping/types/unit_price.json` narrows both `measure.value` and
-// `reference.value` with `minimum: 1` via `allOf`. quicktype merges them into
-// `PurpleMeasureSchema` (`MeasureSchema` / `LineItemMeasureSchema`) and points
-// `UnitPriceClassSchema.measure` at `PurpleMeasureSchema` and
-// `UnitPriceClassSchema.reference` at `FluffyMeasureSchema`.
-//
-// Keep `PurpleMeasureSchema` (and `MeasureSchema` / `LineItemMeasureSchema`) on
-// the signed integer descriptor, split `FluffyMeasureSchema` into a standalone
-// positive-integer (`gte(1)`) object, and rebind `UnitPriceClassSchema.measure`
-// to `FluffyMeasureSchema`.
-const MEASURE_SET_KEY = "display_text,scale,unit,value";
-const sharedMeasureSplitNeeded = (() => {
-  const byProperty = constraintIndex.get(MEASURE_SET_KEY);
-  if (!byProperty) return false;
-  const value = byProperty.get("value");
-  if (!value || value.size !== 2) return false;
-  const descriptors = [...value.values()];
-  const signed = descriptors.find((d) => d.int === true && d.minimum < 0);
-  const positive = descriptors.find((d) => d.int === true && d.minimum === 1);
-  if (!signed || !positive) return false;
-  if (!resolvedIndex.has(MEASURE_SET_KEY)) {
-    resolvedIndex.set(MEASURE_SET_KEY, new Map());
-  }
-  resolvedIndex.get(MEASURE_SET_KEY).set("value", signed);
-  const ambigIdx = ambiguous.findIndex(
-    (a) => a.setKey === MEASURE_SET_KEY && a.name === "value"
-  );
-  if (ambigIdx >= 0) {
-    ambiguous.splice(ambigIdx, 1);
-  }
-  return true;
-})();
-
-// --- Shared {id,type} destination/binding: contextual split ------------------
-//
-// The companion to the base-kind contest above. `shopping/types/
-// fulfillment_destination.json` declares {id,type} as plain strings;
-// `common/types/binding.json` narrows the same property set with
-// `minLength: 1` on `id` and reverse_domain_name.json's reverse-domain pattern
-// on `type`. The contest correctly stops the binding's rules being injected
-// onto the shared generated object -- but quicktype named that object after the
-// DESTINATION and emitted `BindingSchema` as an alias of it, so the binding
-// would lose rules it does declare.
-//
-// Split the binding back out into a standalone object carrying its own rules,
-// exactly as the {id,quantity} and Measure splits above do. The split cannot
-// replace the contest: the object that must stop being constrained IS the
-// shared one, and only the contest de-constrains it; the split then restores
-// the binding.
-//
-// Gated strictly on schema evidence inside the "id,type" property set: `type`
-// must carry a string pattern, `id` a string minLength, and BOTH must have been
-// contested by an unconstrained string occurrence -- i.e. this is the collapsed
-// pair, not a coincidental same-shape object. The rendered methods are derived
-// from the recorded descriptors, so a spec change to the pattern or the length
-// flows through instead of being frozen here.
-const BINDING_SET_KEY = "id,type";
-const bindingSplitDescriptors = (() => {
-  const byProperty = constraintIndex.get(BINDING_SET_KEY);
-  if (!byProperty) return null;
-  const contested = unconstrainedKindIndex.get(BINDING_SET_KEY);
-  if (!contested) return null;
-  const sole = (name) => {
-    const bySignature = byProperty.get(name);
-    if (!bySignature || bySignature.size !== 1) return null;
-    if (!contested.get(name)?.has("string")) return null;
-    const descriptor = [...bySignature.values()][0];
-    return descriptorBaseKind(descriptor) === "string" ? descriptor : null;
-  };
-  const type = sole("type");
-  const id = sole("id");
-  if (!type || !id) return null;
-  if (type.pattern === undefined || id.minLength === undefined) return null;
-  return { type, id };
-})();
 
 // --- Zod method rendering --------------------------------------------------
 
@@ -1624,28 +1661,11 @@ function renderContainsRefine(groups) {
 
 /**
  * Object-level `propertyNames` enforcement for an extra-allow object.
- *
- * `.catchall(z.any())` retains extra keys (a bare `z.object` strips them, which
- * would silently drop the `additionalProperties: true` reverse-domain extras the
- * schema means to keep), and the `.superRefine` matches every property name --
- * named fields and retained extras alike -- against the source key pattern.
- *
- * `RegExp.test` is used deliberately: it implements JSON Schema's unanchored
- * `pattern` semantics, and for the source's `^...$`-anchored pattern it matches
- * only end-of-input in ECMA-262 (no `m` flag), so a trailing-newline key is
- * rejected -- the JS analogue of python-sdk#66's `re.fullmatch` fix (Python's
- * `re.match` admits `"...\n"`). See scripts test for the pinned newline case.
- *
- * Out of scope for this per-object key check: zod-core strips an own `__proto__`
- * key from every `z.object` (a prototype-pollution safeguard) before `.catchall`
- * / `.superRefine` run, so such a key is silently dropped (safe direction: not
- * preserved, no pollution) rather than surfaced as a rejection. That is an
- * SDK-wide zod trait, not a per-schema property, and it is pinned by a test.
  */
-function renderPropertyNamesRefine(pattern) {
+function renderPropertyNamesRefine(pattern, includeCatchall = true) {
   const regex = toRegexLiteral(pattern);
   return (
-    `.catchall(z.any())` +
+    (includeCatchall ? `.catchall(z.any())` : "") +
     `.superRefine((value, ctx) => {` +
     `for (const key of Object.keys(value)) {` +
     `if (!${regex}.test(key)) {` +
@@ -1680,15 +1700,17 @@ function renderMaxPropertiesRefine(maximum, retainAdditionalProperties) {
 }
 
 /**
- * Splice the object-level property-count bounds as one chained edit. A
- * `.refine(...)` result no longer exposes `.catchall`, so two independently
- * rendered bounds that each prepend it would throw at parse time; one leading
- * `.catchall(z.any())` is shared by both refinements.
+ * Splice the object-level property-count bounds as one chained edit.
  */
-function renderObjectCountRefines(minDescriptor, maxDescriptor) {
+function renderObjectCountRefines(
+  minDescriptor,
+  maxDescriptor,
+  includeCatchall = true
+) {
   const retainAdditionalProperties =
-    minDescriptor?.retainAdditionalProperties ??
-    maxDescriptor?.retainAdditionalProperties;
+    includeCatchall &&
+    (minDescriptor?.retainAdditionalProperties ??
+      maxDescriptor?.retainAdditionalProperties);
   return (
     (retainAdditionalProperties ? `.catchall(z.any())` : "") +
     (minDescriptor
@@ -1734,8 +1756,8 @@ function renderConditionalRefine(rules) {
     `const field = rule.field;` +
     `const fieldValue = field === null ? undefined : record[field];` +
     `if (rule.format === "uri" && typeof fieldValue === "string") {` +
-    `try { new URL(fieldValue); } catch { if (field !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
-    `path: [field], message: "Value must be a valid URI" }); }` +
+    `if (!z.string().url().safeParse(fieldValue).success && field !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, ` +
+    `path: [field], message: "Value must be a valid URI" });` +
     `}continue;}` +
     `if (rule.target === null) continue;` +
     `const target = record[rule.target];` +
@@ -2049,6 +2071,7 @@ const CONSTRAINT_METHODS = new Set([
   "max",
   "length",
   "regex",
+  "date",
   "refine",
   "superRefine",
   // Derived so a new entry in STRING_FORMAT_METHODS cannot reintroduce
@@ -2085,26 +2108,6 @@ function existingConstraintChainEnd(baseCall) {
   return node.getEnd();
 }
 
-/**
- * Idempotency for the object-level propertyNames splice: is the whole
- * `z.object({...})` call already wrapped by a key-check method chain
- * (`.catchall(...)` / `.superRefine(...)`)?
- */
-function objectAlreadyConstrained(objectCall) {
-  const parent = objectCall.parent;
-  if (parent && ts.isPropertyAccessExpression(parent)) {
-    const method = parent.name.text;
-    if (
-      method === "catchall" ||
-      method === "superRefine" ||
-      method === "refine"
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 /** End position of the method chain wrapping a `z.object({...})` call. */
 function objectChainEnd(objectCall) {
   let outer = objectCall;
@@ -2125,6 +2128,24 @@ function objectChainText(objectCall) {
   return sourceText.slice(objectCall.getEnd(), objectChainEnd(objectCall));
 }
 
+function objectChainHasCatchall(objectCall) {
+  return /\.(?:catchall|passthrough|strict)\(/.test(
+    objectChainText(objectCall)
+  );
+}
+
+function propertyNamesAlreadyConstrained(objectCall) {
+  return /\.superRefine\([\s\S]*?\(propertyNames\)/.test(
+    objectChainText(objectCall)
+  );
+}
+
+function objectCountAlreadyConstrained(objectCall) {
+  return /\.refine\([\s\S]*?\((?:min|max)Properties\)/.test(
+    objectChainText(objectCall)
+  );
+}
+
 function conditionalAlreadyConstrained(objectCall) {
   return /conditional (?:numeric )?constraint/.test(
     objectChainText(objectCall)
@@ -2137,32 +2158,11 @@ function dependentRequiredAlreadyConstrained(objectCall) {
 
 // --- Parse the generated file and compute edits ----------------------------
 
-const sourceText = fs.readFileSync(targetPath, "utf8");
-const sourceFile = ts.createSourceFile(
-  targetPath,
-  sourceText,
-  ts.ScriptTarget.Latest,
-  true,
-  ts.ScriptKind.TS
-);
-
-const edits = []; // { pos, remove?, text }
-const report = {
-  objectsMatched: 0,
-  fieldsInjected: 0,
-  unionBranchesInjected: 0,
-  propertyNamesInjected: 0,
-  minPropertiesInjected: 0,
-  maxPropertiesInjected: 0,
-  conditionalsInjected: 0,
-  dependentRequiredInjected: 0,
-  dependentRequiredVacuous: 0,
-  sharedQuantityInjected: 0,
-  bindingSplitInjected: 0,
-  fieldsSkippedType: 0,
-  fieldsAlreadyDone: 0,
-  injections: [],
-};
+let sourceText = "";
+let sourceFile = null;
+let edits = [];
+let report = null;
+let topLevelInitializers = null;
 
 function objectLiteralPropertySet(objectLiteral) {
   const names = [];
@@ -2178,10 +2178,23 @@ function objectLiteralPropertySet(objectLiteral) {
   return names;
 }
 
+function findEnclosingSchemaIdent(objectLiteral) {
+  let current = objectLiteral.parent;
+  while (current) {
+    if (ts.isPropertyAssignment(current)) {
+      return null;
+    }
+    if (ts.isVariableDeclaration(current) && ts.isIdentifier(current.name)) {
+      return current.name.text;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
 // Top-level `export const Name = <initializer>` bindings, so a property whose
 // initializer is a bare reference (`address: BillingAddressClassSchema`) is
 // judged by the schema it names.
-let topLevelInitializers = null;
 function topLevelInitializer(name) {
   if (!topLevelInitializers) {
     topLevelInitializers = new Map();
@@ -2257,16 +2270,20 @@ function handleObjectLiteral(objectLiteral) {
     return;
   }
   const setKey = [...names].sort().join(",");
-  const resolvedProperties = resolvedIndex.get(setKey);
-  const resolvedUnionProperties = resolvedStringArrayUnions.get(setKey);
-  const propertyNamesDescriptor = resolvedPropertyNames.get(setKey);
-  const minPropertiesDescriptor = resolvedMinProperties.get(setKey);
-  const maxPropertiesDescriptor = resolvedMaxProperties.get(setKey);
+  const enclosingSchemaIdent = findEnclosingSchemaIdent(objectLiteral);
+  const nameKey = enclosingSchemaIdent ? `name:${enclosingSchemaIdent}` : null;
+  const lookupKey =
+    nameKey && seenNameKeys.has(nameKey) ? nameKey : setKey;
+  const resolvedProperties = resolvedIndex.get(lookupKey);
+  const resolvedUnionProperties = resolvedStringArrayUnions.get(lookupKey);
+  const propertyNamesDescriptor = resolvedPropertyNames.get(lookupKey);
+  const minPropertiesDescriptor = resolvedMinProperties.get(lookupKey);
+  const maxPropertiesDescriptor = resolvedMaxProperties.get(lookupKey);
   // If/then rules and variant-union rules render through the same conditional
   // superRefine; cross-index conflicts were already resolved to neither.
   const conditionalRules =
-    resolvedConditionals.get(setKey) ?? resolvedVariantUnions.get(setKey);
-  const dependentRequiredRules = resolvedDependentRequired.get(setKey);
+    resolvedConditionals.get(lookupKey) ?? resolvedVariantUnions.get(setKey);
+  const dependentRequiredRules = resolvedDependentRequired.get(lookupKey);
   if (
     !resolvedProperties &&
     !resolvedUnionProperties &&
@@ -2314,7 +2331,7 @@ function handleObjectLiteral(objectLiteral) {
             text,
           });
           report.unionBranchesInjected += 1;
-          report.injections.push(`${setKey} :: ${name} ${text}`);
+          report.injections.push(`${lookupKey} :: ${name} ${text}`);
           matchedAny = true;
         }
       }
@@ -2354,11 +2371,22 @@ function handleObjectLiteral(objectLiteral) {
       const text = `z.string()${methods.join("")}`;
       edits.push({ pos: base.start, remove: base.end - base.start, text });
       report.fieldsInjected += 1;
-      report.injections.push(`${setKey} :: ${name} ${text}`);
+      report.injections.push(`${lookupKey} :: ${name} ${text}`);
       matchedAny = true;
       continue;
     }
-    const methods = methodsFor(descriptor, base.kind);
+    const effectiveDescriptor =
+      base.kind === "record" &&
+      base.baseCall.arguments.length === 2 &&
+      ts.isIdentifier(base.baseCall.arguments[0]) &&
+      descriptor.propertyNamesPattern !== undefined
+        ? (() => {
+            const copy = { ...descriptor };
+            delete copy.propertyNamesPattern;
+            return copy;
+          })()
+        : descriptor;
+    const methods = methodsFor(effectiveDescriptor, base.kind);
     if (!methods) {
       if (alreadyConstrained(base.baseCall)) {
         report.fieldsAlreadyDone += 1;
@@ -2386,7 +2414,7 @@ function handleObjectLiteral(objectLiteral) {
       text: methods.join(""),
     });
     report.fieldsInjected += 1;
-    report.injections.push(`${setKey} :: ${name} ${methods.join("")}`);
+    report.injections.push(`${lookupKey} :: ${name} ${methods.join("")}`);
     matchedAny = true;
   }
   // Object-level propertyNames: splice a key-pattern check onto the whole
@@ -2396,14 +2424,17 @@ function handleObjectLiteral(objectLiteral) {
     if (
       objectCall &&
       ts.isCallExpression(objectCall) &&
-      !objectAlreadyConstrained(objectCall)
+      !propertyNamesAlreadyConstrained(objectCall)
     ) {
-      const text = renderPropertyNamesRefine(propertyNamesDescriptor.pattern);
-      edits.push({ pos: objectCall.getEnd(), text });
+      const text = renderPropertyNamesRefine(
+        propertyNamesDescriptor.pattern,
+        !objectChainHasCatchall(objectCall)
+      );
+      edits.push({ pos: objectChainEnd(objectCall), text });
       report.propertyNamesInjected += 1;
-      report.injections.push(`${setKey} :: <propertyNames> ${text}`);
+      report.injections.push(`${lookupKey} :: <propertyNames> ${text}`);
       matchedAny = true;
-    } else if (objectCall && objectAlreadyConstrained(objectCall)) {
+    } else if (objectCall && propertyNamesAlreadyConstrained(objectCall)) {
       report.fieldsAlreadyDone += 1;
       matchedAny = true;
     }
@@ -2413,23 +2444,24 @@ function handleObjectLiteral(objectLiteral) {
     if (
       objectCall &&
       ts.isCallExpression(objectCall) &&
-      !objectAlreadyConstrained(objectCall)
+      !objectCountAlreadyConstrained(objectCall)
     ) {
       const text = renderObjectCountRefines(
         minPropertiesDescriptor,
-        maxPropertiesDescriptor
+        maxPropertiesDescriptor,
+        !objectChainHasCatchall(objectCall)
       );
-      edits.push({ pos: objectCall.getEnd(), text });
+      edits.push({ pos: objectChainEnd(objectCall), text });
       if (minPropertiesDescriptor) {
         report.minPropertiesInjected += 1;
-        report.injections.push(`${setKey} :: <minProperties> ${text}`);
+        report.injections.push(`${lookupKey} :: <minProperties> ${text}`);
       }
       if (maxPropertiesDescriptor) {
         report.maxPropertiesInjected += 1;
-        report.injections.push(`${setKey} :: <maxProperties> ${text}`);
+        report.injections.push(`${lookupKey} :: <maxProperties> ${text}`);
       }
       matchedAny = true;
-    } else if (objectCall && objectAlreadyConstrained(objectCall)) {
+    } else if (objectCall && objectCountAlreadyConstrained(objectCall)) {
       report.fieldsAlreadyDone += 1;
       matchedAny = true;
     }
@@ -2444,7 +2476,7 @@ function handleObjectLiteral(objectLiteral) {
       const text = renderConditionalRefine(conditionalRules);
       edits.push({ pos: objectChainEnd(objectCall), text });
       report.conditionalsInjected += 1;
-      report.injections.push(`${setKey} :: <conditional> ${text}`);
+      report.injections.push(`${lookupKey} :: <conditional> ${text}`);
       matchedAny = true;
     } else if (objectCall && conditionalAlreadyConstrained(objectCall)) {
       report.fieldsAlreadyDone += 1;
@@ -2485,7 +2517,7 @@ function handleObjectLiteral(objectLiteral) {
       const text = renderDependentRequiredRefine(liveRules);
       edits.push({ pos: objectChainEnd(objectCall), text });
       report.dependentRequiredInjected += 1;
-      report.injections.push(`${setKey} :: <dependentRequired> ${text}`);
+      report.injections.push(`${lookupKey} :: <dependentRequired> ${text}`);
       matchedAny = true;
     } else if (objectCall && dependentRequiredAlreadyConstrained(objectCall)) {
       report.fieldsAlreadyDone += 1;
@@ -2498,6 +2530,33 @@ function handleObjectLiteral(objectLiteral) {
 }
 
 function visit(node) {
+  if (
+    ts.isVariableDeclaration(node) &&
+    ts.isIdentifier(node.name) &&
+    node.initializer &&
+    resolvedTopLevelArrays.has(node.name.text)
+  ) {
+    const descriptor = resolvedTopLevelArrays.get(node.name.text);
+    const base = findBaseCall(node.initializer, sourceFile);
+    if (base && base.kind === "array") {
+      const methods = methodsFor(descriptor, "array");
+      if (methods) {
+        const chainEnd = existingConstraintChainEnd(base.baseCall);
+        const existingChain = sourceText.slice(base.end, chainEnd);
+        if (existingChain && methods.every((m) => existingChain.includes(m))) {
+          report.fieldsAlreadyDone += 1;
+        } else {
+          edits.push({
+            pos: base.end,
+            remove: chainEnd - base.end,
+            text: methods.join(""),
+          });
+          report.fieldsInjected += 1;
+          report.injections.push(`${node.name.text} :: ${methods.join("")}`);
+        }
+      }
+    }
+  }
   if (
     ts.isCallExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
@@ -2512,161 +2571,72 @@ function visit(node) {
   ts.forEachChild(node, visit);
 }
 
-visit(sourceFile);
-
-// Apply the contextual {id,quantity} split: `.int()` on the shared quantity
-// (all three contexts declare `type: integer`), and the two `minimum: 1`
-// aliases become standalone objects. Idempotent: the shared `.int()` is
-// guarded by a negative lookahead, and a split alias no longer matches the
-// `= LineItemQuantityRefSchema;` pattern.
-if (sharedQuantitySplitNeeded) {
-  const sharedObjectStart = sourceText.indexOf(
-    "export const LineItemQuantityRefSchema = z.object({"
+function runInjectionPass(schemaDir) {
+  resetAndBuildIndexes(schemaDir);
+  sourceText = fs.readFileSync(targetPath, "utf8");
+  sourceFile = ts.createSourceFile(
+    targetPath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
   );
-  const sharedObjectEnd =
-    sharedObjectStart >= 0
-      ? sourceText.indexOf("\n});", sharedObjectStart)
-      : -1;
-  if (sharedObjectStart >= 0 && sharedObjectEnd >= 0) {
-    const sharedObjectText = sourceText.slice(
-      sharedObjectStart,
-      sharedObjectEnd
-    );
-    const quantityRef = /["']?quantity["']?: z\.number\(\)(?!\.int\(\))/.exec(
-      sharedObjectText
-    );
-    if (quantityRef) {
-      edits.push({
-        pos: sharedObjectStart + quantityRef.index + quantityRef[0].length,
-        text: ".int()",
-      });
-      report.sharedQuantityInjected += 1;
-    }
+  edits = [];
+  report = {
+    objectsMatched: 0,
+    fieldsInjected: 0,
+    unionBranchesInjected: 0,
+    propertyNamesInjected: 0,
+    minPropertiesInjected: 0,
+    maxPropertiesInjected: 0,
+    conditionalsInjected: 0,
+    dependentRequiredInjected: 0,
+    dependentRequiredVacuous: 0,
+    fieldsSkippedType: 0,
+    fieldsAlreadyDone: 0,
+    injections: [],
+  };
+  topLevelInitializers = null;
+
+  visit(sourceFile);
+
+  // Apply edits back-to-front so positions stay valid.
+  edits.sort((a, b) => b.pos - a.pos);
+  let output = sourceText;
+  for (const edit of edits) {
+    output =
+      output.slice(0, edit.pos) +
+      edit.text +
+      output.slice(edit.pos + (edit.remove ?? 0));
   }
-  for (const name of QUANTITY_SPLIT_TARGETS) {
-    const aliasRef = new RegExp(
-      `export const ${name}Schema = LineItemQuantityRefSchema;`
-    );
-    const matched = aliasRef.exec(sourceText);
-    if (!matched) {
-      continue;
-    }
-    const standalone =
-      `export const ${name}Schema = z.object({\n` +
-      `  id: z.string(),\n` +
-      `  quantity: z.number().int().gte(1),\n` +
-      `});`;
-    edits.push({
-      pos: matched.index,
-      remove: matched[0].length,
-      text: standalone,
-    });
-    report.sharedQuantityInjected += 1;
-  }
-}
 
-if (sharedMeasureSplitNeeded) {
-  const aliasRef = /export const FluffyMeasureSchema = PurpleMeasureSchema;/;
-  const matched = aliasRef.exec(sourceText);
-  if (matched) {
-    const standalone =
-      `export const FluffyMeasureSchema = z.object({\n` +
-      `  display_text: z.string(),\n` +
-      `  scale: z.number().int().gte(0).lte(15).optional(),\n` +
-      `  unit: z.string(),\n` +
-      `  value: z.number().int().gte(1).lte(9007199254740991),\n` +
-      `});`;
-    edits.push({
-      pos: matched.index,
-      remove: matched[0].length,
-      text: standalone,
-    });
-    report.sharedMeasureInjected = (report.sharedMeasureInjected ?? 0) + 1;
-  }
-  const unitPriceStart = sourceText.indexOf(
-    "export const UnitPriceClassSchema = z.object({"
-  );
-  const unitPriceEnd =
-    unitPriceStart >= 0 ? sourceText.indexOf("\n});", unitPriceStart) : -1;
-  if (unitPriceStart >= 0 && unitPriceEnd >= 0) {
-    const unitPriceText = sourceText.slice(unitPriceStart, unitPriceEnd);
-    const measureProp = /["']?measure["']?: PurpleMeasureSchema\b/.exec(
-      unitPriceText
-    );
-    if (measureProp) {
-      edits.push({
-        pos: unitPriceStart + measureProp.index,
-        remove: measureProp[0].length,
-        text: "measure: FluffyMeasureSchema",
-      });
-      report.sharedMeasureInjected = (report.sharedMeasureInjected ?? 0) + 1;
-    }
-  }
-}
+  fs.writeFileSync(targetPath, output);
 
-// Apply the contextual {id,type} binding split. Matches the alias by its
-// RIGHT-HAND SIDE shape rather than by the shared object's name, which is
-// quicktype's choice and may change: any `= <Something>Schema;` alias of a
-// generated object is replaced by a standalone object carrying the binding's
-// own recovered rules. Idempotent -- once split, BindingSchema is a z.object
-// and no longer matches the alias pattern.
-if (bindingSplitDescriptors) {
-  const aliasRef = /export const BindingSchema = (\w+Schema);/;
-  const matched = aliasRef.exec(sourceText);
-  if (matched) {
-    const typeMethods = methodsFor(bindingSplitDescriptors.type, "string");
-    const idMethods = methodsFor(bindingSplitDescriptors.id, "string");
-    if (typeMethods && idMethods) {
-      const standalone =
-        `export const BindingSchema = z.object({\n` +
-        `  id: z.string()${idMethods.join("")},\n` +
-        `  type: z.string()${typeMethods.join("")},\n` +
-        `});`;
-      edits.push({
-        pos: matched.index,
-        remove: matched[0].length,
-        text: standalone,
-      });
-      report.bindingSplitInjected += 1;
-    }
-  }
-}
+  // --- Report ----------------------------------------------------------------
 
-// Apply edits back-to-front so positions stay valid.
-edits.sort((a, b) => b.pos - a.pos);
-let output = sourceText;
-for (const edit of edits) {
-  output =
-    output.slice(0, edit.pos) +
-    edit.text +
-    output.slice(edit.pos + (edit.remove ?? 0));
-}
-
-fs.writeFileSync(targetPath, output);
-
-// --- Report ----------------------------------------------------------------
-
-process.stdout.write(
-  `inject-schema-constraints: ${report.fieldsInjected} field(s) constrained ` +
-    `across ${report.objectsMatched} object schema(s); ` +
-    `${report.unionBranchesInjected} string-array union branch constraint(s); ` +
-    `${report.propertyNamesInjected} propertyNames key-check(s); ` +
-    `${report.minPropertiesInjected} object minProperties check(s); ` +
-    `${report.maxPropertiesInjected} object maxProperties check(s); ` +
-    `${report.conditionalsInjected} conditional check(s); ` +
-    `${report.dependentRequiredInjected} object dependentRequired check(s); ` +
-    `${report.dependentRequiredVacuous} vacuous dependentRequired rule(s) skipped; ` +
-    `${report.sharedQuantityInjected} shared-quantity split edit(s); ` +
-    `${report.sharedMeasureInjected ?? 0} shared-measure split edit(s); ` +
-    `${report.bindingSplitInjected} binding split edit(s); ` +
-    `${report.fieldsAlreadyDone} already constrained; ` +
-    `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
-);
-if (ambiguous.length) {
   process.stdout.write(
-    `inject-schema-constraints: ${ambiguous.length} property(ies) left ` +
-      `untouched (ambiguous constraints within a property-set): ` +
-      ambiguous.map((a) => `${a.name}@{${a.setKey}}`).join(", ") +
-      "\n"
+    `inject-schema-constraints: ${report.fieldsInjected} field(s) constrained ` +
+      `across ${report.objectsMatched} object schema(s); ` +
+      `${report.unionBranchesInjected} string-array union branch constraint(s); ` +
+      `${report.propertyNamesInjected} propertyNames key-check(s); ` +
+      `${report.minPropertiesInjected} object minProperties check(s); ` +
+      `${report.maxPropertiesInjected} object maxProperties check(s); ` +
+      `${report.conditionalsInjected} conditional check(s); ` +
+      `${report.dependentRequiredInjected} object dependentRequired check(s); ` +
+      `${report.dependentRequiredVacuous} vacuous dependentRequired rule(s) skipped; ` +
+      `${report.fieldsAlreadyDone} already constrained; ` +
+      `${report.fieldsSkippedType} skipped (base-type mismatch).\n`
   );
+  if (ambiguous.length) {
+    process.stdout.write(
+      `inject-schema-constraints: ${ambiguous.length} property(ies) left ` +
+        `untouched (ambiguous constraints within a property-set): ` +
+        ambiguous.map((a) => `${a.name}@{${a.setKey}}`).join(", ") +
+        "\n"
+    );
+  }
+}
+
+for (const sourceArg of orderedSources) {
+  runInjectionPass(path.resolve(sourceArg));
 }
