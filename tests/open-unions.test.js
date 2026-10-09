@@ -17,6 +17,7 @@ const assert = require("node:assert/strict");
 
 const {
   CheckoutSchema,
+  CheckoutCompleteRequestSchema,
   FulfillmentDestinationSchema,
   FulfillmentDestinationBaseSchema,
   ShippingDestinationSchema,
@@ -292,4 +293,17 @@ test("ProviderSchema validates known oauth2 variant, rejects incomplete oauth2, 
   const customRes = ProviderSchema.safeParse(customIdp);
   assert.ok(customRes.success);
   assert.deepEqual(customRes.data, customIdp);
+});
+
+test("CheckoutCompleteRequestSchema accepts non-AP2 checkout completion payloads", () => {
+  const withoutAp2 = CheckoutCompleteRequestSchema.safeParse({
+    payment: { instruments: [] },
+  });
+  assert.ok(withoutAp2.success);
+
+  const withValidAp2 = CheckoutCompleteRequestSchema.safeParse({
+    payment: { instruments: [] },
+    ap2: { checkout_mandate: "eyJhbGciOiJFZERTQSJ9.eyJ0ZXN0IjoxfQ.c2ln" },
+  });
+  assert.ok(withValidAp2.success);
 });

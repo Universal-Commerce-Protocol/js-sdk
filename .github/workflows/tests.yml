@@ -100,8 +100,8 @@ jobs:
       # Normalize exactly as the committed models were normalized, by reusing
       # the repo's own pinned pre-commit prettier hook (mirrors-prettier rev in
       # .pre-commit-config.yaml). Single source of truth: no second prettier
-      # version to keep in sync. Raw quicktype output is unformatted, so this
-      # step is required for the byte-for-byte comparison below. Prettier exits
+      # version to keep in sync. Ensures consistent formatting for the
+      # byte-for-byte comparison below. Prettier exits
       # non-zero when it rewrites the file, so let the diff step be the gate.
       - name: Normalize (prettier, via the repo's pinned pre-commit hook)
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1

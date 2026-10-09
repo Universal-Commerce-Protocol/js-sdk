@@ -2058,7 +2058,7 @@ export const CheckoutCompleteRequestSchema = z
     attribution: AttributionSchema.optional(),
     payment: PaymentCompleteRequestSchema,
     cart_id: z.string().optional(),
-    ap2: Ap2WithCheckoutMandateCompleteRequestSchema,
+    ap2: Ap2WithCheckoutMandateCompleteRequestSchema.optional(),
   })
   .catchall(z.any());
 export type CheckoutCompleteRequest = z.infer<

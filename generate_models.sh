@@ -23,6 +23,9 @@ CLONED_DIR=""
 
 if [[ -d "$INPUT_ARG" ]]; then
   INPUT_DIR="$INPUT_ARG"
+elif [[ "$INPUT_ARG" == /* || "$INPUT_ARG" == ./* || "$INPUT_ARG" == ../* ]]; then
+  echo "Error: Local UCP directory not found at '$INPUT_ARG'."
+  exit 1
 elif [[ "$INPUT_ARG" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
   BRANCH="release/$INPUT_ARG"
   echo "Cloning UCP version $INPUT_ARG (branch: $BRANCH)..."
@@ -71,6 +74,10 @@ elif [[ -x "../ucp-schema/target/release/ucp-schema" ]]; then
   UCP_SCHEMA_BIN="../ucp-schema/target/release/ucp-schema"
 elif [[ -x "../ucp-schema/target/debug/ucp-schema" ]]; then
   UCP_SCHEMA_BIN="../ucp-schema/target/debug/ucp-schema"
+elif [[ -f "../ucp-schema/Cargo.toml" ]] && command -v cargo &> /dev/null; then
+  echo "Building ucp-schema from ../ucp-schema..."
+  cargo build --release --manifest-path "../ucp-schema/Cargo.toml"
+  UCP_SCHEMA_BIN="../ucp-schema/target/release/ucp-schema"
 else
   echo "Error: ucp-schema CLI binary (with generate-types) not found on PATH or in ../ucp-schema/target/{release,debug}."
   exit 1
@@ -91,4 +98,8 @@ node scripts/generate-zod-from-types.mjs "$TMP_TYPES_JSON" src/spec_generated.ts
 
 node scripts/inject-schema-constraints.mjs "$TMP_TYPES_JSON" "$SCHEMA_DIR" src/spec_generated.ts
 
-npx prettier --write src/spec_generated.ts
+if [[ -x "./node_modules/.bin/prettier" ]]; then
+  ./node_modules/.bin/prettier --write src/spec_generated.ts
+else
+  npx prettier --write src/spec_generated.ts
+fi
