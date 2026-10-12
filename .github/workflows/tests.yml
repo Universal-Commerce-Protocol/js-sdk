@@ -89,8 +89,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Pinned to an immutable commit + Cargo.lock while ucp-schema#81-#88 are
+      # in review; switch to `cargo install ucp-schema@<version> --locked`
+      # once the ucp-schema release is published.
       - name: Install ucp-schema
-        run: cargo install --git https://github.com/Universal-Commerce-Protocol/ucp-schema.git --branch feat/codegen-subtype-discovery ucp-schema
+        run: cargo install --git https://github.com/Universal-Commerce-Protocol/ucp-schema.git --rev 2ad1c6c3accff7cfba1b92023710f9dc94813c7d --locked ucp-schema
 
       # generate_models.sh auto-detects the source/ layout that
       # release/2026-08-25 ships and writes src/spec_generated.ts in place.
