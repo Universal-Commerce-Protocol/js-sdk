@@ -83,20 +83,33 @@ else
   exit 1
 fi
 
+SCOPED_SCHEMA_DIR=""
 TMP_TYPES_JSON="$(mktemp "${TMPDIR:-/tmp}/ucp-types.XXXXXX.json")"
 cleanup() {
   rm -f "$TMP_TYPES_JSON"
+  if [[ -n "$SCOPED_SCHEMA_DIR" && -d "$SCOPED_SCHEMA_DIR" ]]; then
+    rm -rf "$SCOPED_SCHEMA_DIR"
+  fi
   if [[ -n "$CLONED_DIR" && -d "$CLONED_DIR" ]]; then
     rm -rf "$CLONED_DIR"
   fi
 }
 trap cleanup EXIT
 
-"$UCP_SCHEMA_BIN" generate-types --schema-dir "$SCHEMA_DIR" --output "$TMP_TYPES_JSON"
+# Scope compilation to Shopping + Common + Transports so other verticals do not bleed in.
+SCOPED_SCHEMA_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ucp-schemas.XXXXXX")"
+cp "$SCHEMA_DIR"/*.json "$SCOPED_SCHEMA_DIR"/
+for dir in common transports shopping; do
+  if [[ -d "$SCHEMA_DIR/$dir" ]]; then
+    cp -R "$SCHEMA_DIR/$dir" "$SCOPED_SCHEMA_DIR/$dir"
+  fi
+done
+
+"$UCP_SCHEMA_BIN" generate-types --schema-dir "$SCOPED_SCHEMA_DIR" --output "$TMP_TYPES_JSON"
 
 node scripts/generate-zod-from-types.mjs "$TMP_TYPES_JSON" src/spec_generated.ts
 
-node scripts/inject-schema-constraints.mjs "$TMP_TYPES_JSON" "$SCHEMA_DIR" src/spec_generated.ts
+node scripts/inject-schema-constraints.mjs "$TMP_TYPES_JSON" "$SCOPED_SCHEMA_DIR" src/spec_generated.ts
 
 if [[ -x "./node_modules/.bin/prettier" ]]; then
   ./node_modules/.bin/prettier --write src/spec_generated.ts
