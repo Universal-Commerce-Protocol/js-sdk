@@ -1166,6 +1166,8 @@ export type Amenity = z.infer<typeof AmenitySchema>;
 
 export const ExceptionHourElementSchema = z
   .object({
+    valid_from: z.string(),
+    valid_through: z.string(),
     closes: z
       .string()
       .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
@@ -1175,8 +1177,6 @@ export const ExceptionHourElementSchema = z
       .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
       .optional(),
     title: z.string().optional(),
-    valid_from: z.string().optional(),
-    valid_through: z.string().optional(),
   })
   .superRefine((value, ctx) => {
     const record = value as Record<string, unknown>;
@@ -1199,35 +1199,11 @@ export type ExceptionHourElement = z.infer<typeof ExceptionHourElementSchema>;
 export const ExceptionHourSchema = ExceptionHourElementSchema;
 export type ExceptionHour = ExceptionHourElement;
 
-export const DailyHourElementSchema = z
-  .object({
-    closes: z
-      .string()
-      .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
-      .optional(),
-    opens: z
-      .string()
-      .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/)
-      .optional(),
-    day: DaySchema.optional(),
-  })
-  .superRefine((value, ctx) => {
-    const record = value as Record<string, unknown>;
-    for (const [subject, dependents] of [
-      ["closes", ["opens"]],
-      ["opens", ["closes"]],
-    ] as [string, string[]][]) {
-      if (record[subject] === undefined) continue;
-      for (const field of dependents) {
-        if (record[field] === undefined)
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `Field is required when ${subject} is present (dependentRequired)`,
-          });
-      }
-    }
-  });
+export const DailyHourElementSchema = z.object({
+  day: DaySchema,
+  opens: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/),
+  closes: z.string().regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/),
+});
 export type DailyHourElement = z.infer<typeof DailyHourElementSchema>;
 export const DailyHourSchema = DailyHourElementSchema;
 export type DailyHour = DailyHourElement;

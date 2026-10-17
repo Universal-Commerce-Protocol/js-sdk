@@ -239,11 +239,14 @@ test("ExceptionHourElementSchema inherits the pair rule through allOf: a closure
   );
 });
 
-test("DailyHourElementSchema keeps the pair rule: the generated object carries opens and closes as optional", () => {
-  // daily_hour.json lists day, opens and closes as required, but quicktype
-  // emits all three optional (a separate, pre-existing loss), so on the
-  // generated object the rule is live, not vacuous: judged on the schema's
-  // `required` it would have been dropped and `{ day, opens }` kept passing.
+test("DailyHourElementSchema stays plain z.object: day, opens, and closes are required", () => {
+  // daily_hour.json lists day, opens and closes as required. Because opens
+  // and closes are both required on the generated object, the dependentRequired
+  // pair rule is vacuous and the schema stays a plain z.object.
+  assert.ok(
+    DailyHourElementSchema.shape,
+    "DailyHourElementSchema lost .shape: wrapped for a rule that cannot change a verdict"
+  );
   assert.ok(rejects(DailyHourElementSchema, { day: "monday", opens: "09:00" }));
   assert.ok(
     accepts(DailyHourElementSchema, {

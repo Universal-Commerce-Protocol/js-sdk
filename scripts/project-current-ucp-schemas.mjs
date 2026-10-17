@@ -444,6 +444,9 @@ function projectSchemaNode(node, context) {
     }
 
     if (key === "required") {
+      if (!node.properties || typeof node.properties !== "object") {
+        output.required = Array.isArray(value) ? [...value] : value;
+      }
       continue;
     }
 
