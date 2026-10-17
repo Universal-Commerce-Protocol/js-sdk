@@ -14,7 +14,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { EcKeysCarryCrvXYSchema } = require("./.dist/spec_generated.js");
+const { JwkPublicKeySchema } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
 const rejects = (schema, value) => schema.safeParse(value).success === false;
@@ -36,30 +36,30 @@ const OKP = {
 };
 
 test("an EC key must carry crv, x and y", () => {
-  assert.ok(accepts(EcKeysCarryCrvXYSchema, EC));
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, { kid: "key-1", kty: "EC" }));
+  assert.ok(accepts(JwkPublicKeySchema, EC));
+  assert.ok(rejects(JwkPublicKeySchema, { kid: "key-1", kty: "EC" }));
   const { crv, ...noCrv } = EC;
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, noCrv));
+  assert.ok(rejects(JwkPublicKeySchema, noCrv));
   const { y, ...noY } = EC;
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, noY));
+  assert.ok(rejects(JwkPublicKeySchema, noY));
 });
 
 test("an OKP key must carry crv and x", () => {
-  assert.ok(accepts(EcKeysCarryCrvXYSchema, OKP));
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, { kid: "key-2", kty: "OKP" }));
+  assert.ok(accepts(JwkPublicKeySchema, OKP));
+  assert.ok(rejects(JwkPublicKeySchema, { kid: "key-2", kty: "OKP" }));
   const { x, ...noX } = OKP;
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, noX));
+  assert.ok(rejects(JwkPublicKeySchema, noX));
 });
 
 test("the conditional applies only to the matching key type", () => {
   // An unrelated key type carries neither obligation, so the rule must not
   // fire and turn every other key into an error.
   assert.ok(
-    accepts(EcKeysCarryCrvXYSchema, { kid: "key-3", kty: "oct", alg: "HS256" })
+    accepts(JwkPublicKeySchema, { kid: "key-3", kty: "oct", alg: "HS256" })
   );
 });
 
 test("the required members the base schema already states still hold", () => {
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, { kid: "key-1" }));
-  assert.ok(rejects(EcKeysCarryCrvXYSchema, { kty: "EC" }));
+  assert.ok(rejects(JwkPublicKeySchema, { kid: "key-1" }));
+  assert.ok(rejects(JwkPublicKeySchema, { kty: "EC" }));
 });
