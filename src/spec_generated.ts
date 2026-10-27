@@ -942,16 +942,26 @@ export type ListPriceClass = z.infer<typeof ListPriceClassSchema>;
 export const PriceSchema = ListPriceClassSchema;
 export type Price = ListPriceClass;
 
-export const MediaElementSchema = z.object({
-  alt_text: z.string().optional(),
+export const MediaPreviewSchema = z.object({
   height: z.number().int().gte(1).optional(),
-  type: z.string(),
   url: z.string().url(),
   width: z.number().int().gte(1).optional(),
 });
-export type MediaElement = z.infer<typeof MediaElementSchema>;
-export const MediaSchema = MediaElementSchema;
-export type Media = MediaElement;
+export type MediaPreview = z.infer<typeof MediaPreviewSchema>;
+export const MediaPreviewClassSchema = MediaPreviewSchema;
+export type MediaPreviewClass = MediaPreview;
+
+export const SourceElementSchema = z.object({
+  filesize: z.number().int().gte(1).optional(),
+  format: z.string().optional(),
+  height: z.number().int().gte(1).optional(),
+  mime_type: z.string().optional(),
+  url: z.string().url(),
+  width: z.number().int().gte(1).optional(),
+});
+export type SourceElement = z.infer<typeof SourceElementSchema>;
+export const MediaSourceSchema = SourceElementSchema;
+export type MediaSource = SourceElement;
 
 export const ValueElementSchema = z.object({
   id: z.string().optional(),
@@ -1628,6 +1638,24 @@ export const DisplaySchema = z.object({
 });
 export type Display = z.infer<typeof DisplaySchema>;
 
+export const MediaExternalVideoSchema = z.object({
+  sources: z.any().optional(),
+  url: z.any().optional(),
+});
+export type MediaExternalVideo = z.infer<typeof MediaExternalVideoSchema>;
+export const MediaImageSchema = MediaExternalVideoSchema;
+export type MediaImage = MediaExternalVideo;
+
+export const MediaModel3DSchema = z.object({
+  height: z.any().optional(),
+  sources: z.any().optional(),
+  url: z.any().optional(),
+  width: z.any().optional(),
+});
+export type MediaModel3D = z.infer<typeof MediaModel3DSchema>;
+export const MediaVideoSchema = MediaModel3DSchema;
+export type MediaVideo = MediaModel3D;
+
 export const MessageErrorSchema = z.object({
   code: z.string(),
   content: z.string(),
@@ -2087,6 +2115,21 @@ export const SearchFiltersSchema = z
   })
   .catchall(z.any());
 export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
+
+export const MediaElementSchema = z.object({
+  alt_text: z.string().optional(),
+  duration: z.number().int().gte(1).optional(),
+  height: z.number().int().gte(1).optional(),
+  name: z.string().optional(),
+  preview: MediaPreviewSchema.optional(),
+  sources: z.array(SourceElementSchema).optional(),
+  type: z.string(),
+  url: z.string().url(),
+  width: z.number().int().gte(1).optional(),
+});
+export type MediaElement = z.infer<typeof MediaElementSchema>;
+export const MediaSchema = MediaElementSchema;
+export type Media = MediaElement;
 
 export const CatalogLookupSchema = z.object({
   availability: AvailabilityClassSchema.optional(),
