@@ -16,21 +16,18 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  CartResponseSchema,
+  CartSchema,
   CheckoutCompleteRequestSchema,
   CheckoutCreateRequestSchema,
-  CheckoutResponseSchema,
+  CheckoutSchema,
   ErrorResponseSchema,
   FulfillmentCreateRequestSchema,
   PaymentCredentialSchema,
   PostalAddressSchema,
+  RequestConstraintsSchema,
   TokenCredentialSchema,
+  ValueConstraintSchema,
 } = require("./.dist/spec_generated.js");
-const {
-  ExtendedCheckoutCreateRequestSchema,
-  ExtendedCheckoutResponseSchema,
-  ExtendedPaymentCredentialSchema,
-} = require("./.dist/extensions.js");
 
 const instrument = {
   id: "pi_tok_visa",
@@ -101,8 +98,8 @@ test("an open schema still validates the fields it models and keeps .shape", () 
     false,
     "retaining unknown keys must not loosen a modelled field"
   );
-  for (const schema of [CheckoutResponseSchema, CartResponseSchema]) {
-    assert.ok(schema.shape, "extensions.ts needs .shape, .extend and .pick");
+  for (const schema of [CheckoutSchema, CartSchema]) {
+    assert.ok(schema.shape, "object schemas expose .shape");
   }
 });
 
@@ -119,8 +116,7 @@ test("TokenCredentialSchema stays the response projection: no token field, extra
   }
 });
 
-test("a closed schema strictly rejects unknown keys", () => {
-  // error_response.json is `additionalProperties: false` (.strict()).
+test("ErrorResponseSchema preserves unknown keys as a tolerant-reader DTO", () => {
   const basePayload = {
     ucp: { version: "2026-04-08", status: "error" },
     messages: [
@@ -132,14 +128,26 @@ test("a closed schema strictly rejects unknown keys", () => {
       },
     ],
   };
-  assert.ok(ErrorResponseSchema.safeParse(basePayload).success);
-  assert.equal(
-    ErrorResponseSchema.safeParse({
-      ...basePayload,
-      debug: "not in the schema",
-    }).success,
-    false
-  );
+  const result = ErrorResponseSchema.safeParse({
+    ...basePayload,
+    debug: "preserved on wire DTO",
+  });
+  assert.ok(result.success);
+  assert.equal(result.data.debug, "preserved on wire DTO");
+
+  const valueConstraint = ValueConstraintSchema.safeParse({
+    const: "visa",
+    extra_hint: "preserved",
+  });
+  assert.ok(valueConstraint.success);
+  assert.equal(valueConstraint.data.extra_hint, "preserved");
+
+  const reqConstraints = RequestConstraintsSchema.safeParse({
+    properties: { brands: { const: "visa", extra_hint: "preserved" } },
+    extra_constraint: true,
+  });
+  assert.ok(reqConstraints.success);
+  assert.equal(reqConstraints.data.extra_constraint, true);
 });
 
 test("open-by-default UCP object schemas retain unknown keys", () => {
@@ -156,27 +164,4 @@ test("open-by-default UCP object schemas retain unknown keys", () => {
   });
   assert.ok(fulfillment.success);
   assert.equal(fulfillment.data.note, "x");
-});
-
-test("Extended* schemas built with .extend() and .pick() keep unknown keys", () => {
-  const request = ExtendedCheckoutCreateRequestSchema.safeParse({
-    line_items: [{ item: { id: "sku_123" }, quantity: 1 }],
-    "com.example.gift_wrap": true,
-  });
-  assert.ok(request.success);
-  assert.equal(request.data["com.example.gift_wrap"], true);
-
-  const credentialResult = ExtendedPaymentCredentialSchema.safeParse({
-    type: "card",
-    token: "tok_visa_123",
-    network: "visa",
-  });
-  assert.ok(credentialResult.success);
-  assert.equal(credentialResult.data.token, "tok_visa_123");
-  assert.equal(credentialResult.data.network, "visa");
-
-  assert.ok(
-    ExtendedCheckoutResponseSchema.shape.fulfillment,
-    "the picked extension field is still modelled"
-  );
 });

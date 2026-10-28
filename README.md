@@ -50,18 +50,18 @@ npm install @ucp-js/sdk
 
 ## Usage
 
-The SDK provides Zod schemas and TypeScript types for UCP models. You can use Zod to validate incoming data or ensure your outgoing data matches the specification.
+The SDK provides Zod schemas and TypeScript types for UCP wire data transfer objects (DTOs). Generated Zod schemas perform structural type parsing and tolerant-reader deserialization while preserving unknown extension fields.
 
 ### TypeScript / ES Modules
 
 ```typescript
-import { CheckoutResponseSchema, CheckoutResponse } from "@ucp-js/sdk";
+import { CheckoutSchema, Checkout } from "@ucp-js/sdk";
 
-// Validate data against UCP schemas
-const parseResult = CheckoutResponseSchema.safeParse(checkoutData);
+// Parse wire payload into a typed UCP DTO
+const parseResult = CheckoutSchema.safeParse(checkoutData);
 
 if (parseResult.success) {
-  const checkout: CheckoutResponse = parseResult.data;
+  const checkout: Checkout = parseResult.data;
   console.log(checkout.status); // "incomplete" | "ready_for_complete" | ...
   console.log(checkout.currency); // ISO 4217 currency code
 } else {
@@ -72,12 +72,41 @@ if (parseResult.success) {
 ### CommonJS
 
 ```javascript
-const { CheckoutResponseSchema } = require("@ucp-js/sdk");
+const { CheckoutSchema } = require("@ucp-js/sdk");
 
-const parseResult = CheckoutResponseSchema.safeParse(checkoutData);
+const parseResult = CheckoutSchema.safeParse(checkoutData);
 if (parseResult.success) {
   const checkout = parseResult.data;
   // ...
+}
+```
+
+### Validation
+
+Zod DTO schemas validate structural wire types and preserve unknown extension properties for forward compatibility, but they do not enforce full UCP protocol conformance on their own. To ensure all normative UCP message constraints (such as capability profile composition, directional `ucp_request` and `ucp_response` visibility, `dependentRequired`, `if`/`then`, `uniqueItems`, `contains`, `propertyNames`, `not.enum`, and closed-schema rules) are satisfied, verify received JSON payloads with [`ucp-schema validate`](https://github.com/Universal-Commerce-Protocol/ucp-schema) before deserializing into SDK DTOs:
+
+```bash
+# 1. Verify a self-describing response or JSON-RPC payload
+ucp-schema validate payload.json --op read
+
+# Or verify a REST request against a negotiated discovery profile
+ucp-schema validate payload.json --profile profile.json --op create
+```
+
+```typescript
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import { CheckoutSchema, Checkout } from "@ucp-js/sdk";
+
+// Step 1: Verify normative UCP protocol conformance prior to deserialization
+execFileSync("ucp-schema", ["validate", "payload.json", "--op", "read"]);
+
+// Step 2: Deserialize the verified JSON payload into a typed DTO
+const rawJson = fs.readFileSync("payload.json", "utf8");
+const parseResult = CheckoutSchema.safeParse(JSON.parse(rawJson));
+if (parseResult.success) {
+  const checkout: Checkout = parseResult.data;
+  console.log(checkout.id);
 }
 ```
 

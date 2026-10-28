@@ -98,7 +98,7 @@ function prepareDefinitions(rawDefs) {
     delete node.if;
     delete node.then;
     delete node.else;
-    if (node.not && (node.type === "object" || node.properties)) {
+    if (node.not && (node.type || node.properties)) {
       delete node.not;
     }
 
@@ -293,15 +293,6 @@ function renderDefinitionExpr(defName, schema) {
         return refSchemaIdent;
       }
 
-      if (subSchema.type === "string" && Array.isArray(subSchema.not?.enum)) {
-        const patternSuffix =
-          typeof subSchema.pattern === "string"
-            ? `.regex(new RegExp(${JSON.stringify(subSchema.pattern)}))`
-            : "";
-        const forbidden = JSON.stringify(subSchema.not.enum);
-        return `z.string()${patternSuffix}.superRefine((value, ctx) => { if ((${forbidden} as readonly string[]).includes(value)) { ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Invalid discriminator value", fatal: true }); } })`;
-      }
-
       if (
         subSchema.type === "object" &&
         !subSchema.properties &&
@@ -395,78 +386,6 @@ for (const defName of sortedNames) {
     lines.push(topDeprecationComment);
   }
   lines.push(`export type ${typeIdent} = z.infer<typeof ${schemaIdent}>;`);
-  lines.push("");
-}
-
-const PUBLIC_ALIASES = {
-  BusinessLocationDestination: "LocationDestination",
-  BusinessLocationDestinationResponse: "LocationDestination",
-  Capability: "CapabilityResponseSchema",
-  CapabilityDiscovery: "CapabilityPlatformSchema",
-  CartResponse: "Cart",
-  CatalogLookupRequestSignals: "Signals",
-  CheckoutCreateRequestContext: "Context",
-  CheckoutCreateRequestSignals: "Signals",
-  CheckoutResponse: "Checkout",
-  CheckoutResponseMessage: "Message",
-  CheckoutWithFulfillmentCreateRequest: "CheckoutCreateRequest",
-  CheckoutWithFulfillmentUpdateRequest: "CheckoutUpdateRequest",
-  DiscoveryProfile: "ProfileBusinessSchema",
-  Embedded: "EmbeddedConfig",
-  FulfillmentAvailableMethodResponse: "FulfillmentAvailableMethod",
-  FulfillmentDestinationResponse: "FulfillmentDestination",
-  FulfillmentExpectationLineItem: "ExpectationLineItem",
-  FulfillmentGroupResponse: "FulfillmentGroup",
-  FulfillmentMethodResponse: "FulfillmentMethod",
-  FulfillmentOptionBaseResponse: "FulfillmentOptionBase",
-  FulfillmentOptionResponse: "FulfillmentOption",
-  FulfillmentResponse: "Fulfillment",
-  GetProductRequest: "CatalogGetProductRequest",
-  GetProductResponse: "CatalogGetProductResponse",
-  ItemResponse: "Item",
-  LineItemQuantityRef: "AdjustmentLineItem",
-  LineItemResponse: "LineItem",
-  LookupRequest: "CatalogLookupRequest",
-  LookupRequestSignals: "Signals",
-  LookupResponse: "CatalogLookupResponse",
-  LookupResponseMessage: "Message",
-  PaymentCredential: "PaymentCredentialResponse",
-  PaymentHandler: "PaymentHandlerResponseSchema",
-  PickupMethodResponse: "PickupMethod",
-  SearchRequest: "CatalogSearchRequest",
-  SearchResponse: "CatalogSearchResponse",
-  SearchResponsePagination: "PaginationResponse",
-  Service: "ServiceResponseSchema",
-  ShippingDestinationResponse: "ShippingDestination",
-  ShippingMethodResponse: "ShippingMethod",
-  TokenCredential: "TokenCredentialResponse",
-  TotalResponse: "Total",
-  TotalsResponse: "TotalsItem",
-  Ucp: "UcpBusinessSchema",
-  UcpCheckoutResponse: "ResponseCheckoutSchema",
-  UcpDiscoveryProfile: "ProfileBusinessSchema",
-  UcpProfileDocument: "Profile",
-  UcpService: "ServiceBusinessSchema",
-};
-
-for (const [aliasName, targetName] of Object.entries(PUBLIC_ALIASES)) {
-  if (!(targetName in defs) || aliasName in defs) {
-    continue;
-  }
-  const aliasSchema = toSchemaIdentifier(aliasName);
-  const aliasType = toTypeIdentifier(aliasName);
-  const targetSchema = toSchemaIdentifier(targetName);
-  const targetType = toTypeIdentifier(targetName);
-  lines.push(`export const ${aliasSchema} = ${targetSchema};`);
-  lines.push(`export type ${aliasType} = ${targetType};`);
-  lines.push("");
-}
-
-if ("ResponseCheckoutSchema" in defs && !("UcpResponse" in defs)) {
-  lines.push(
-    "export const UcpResponseSchema = ResponseCheckoutSchema.partial({ payment_handlers: true });"
-  );
-  lines.push("export type UcpResponse = z.infer<typeof UcpResponseSchema>;");
   lines.push("");
 }
 

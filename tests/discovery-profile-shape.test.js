@@ -23,8 +23,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
-  UcpDiscoveryProfileSchema,
-  UcpSchema,
+  ProfileBusinessSchema,
+  UcpBusinessSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -37,27 +37,27 @@ const specProfile = JSON.parse(
   )
 );
 
-test("UcpDiscoveryProfileSchema accepts the business profile example from the specification", () => {
-  const result = UcpDiscoveryProfileSchema.safeParse(specProfile);
+test("ProfileBusinessSchema accepts the business profile example from the specification", () => {
+  const result = ProfileBusinessSchema.safeParse(specProfile);
   assert.ok(
     result.success,
     result.success ? "" : JSON.stringify(result.error.issues, null, 2)
   );
 });
 
-test("UcpSchema models capabilities as a record of entity arrays, not a flat array", () => {
+test("UcpBusinessSchema models capabilities as a record of entity arrays, not a flat array", () => {
   const ucp = specProfile.ucp;
-  assert.ok(accepts(UcpSchema, ucp));
+  assert.ok(accepts(UcpBusinessSchema, ucp));
   const flat = {
     ...ucp,
     capabilities: Object.entries(ucp.capabilities).flatMap(([name, entries]) =>
       entries.map((entry) => ({ name, ...entry }))
     ),
   };
-  assert.ok(rejects(UcpSchema, flat));
+  assert.ok(rejects(UcpBusinessSchema, flat));
 });
 
-test("UcpSchema models each services entry as an array of service entities", () => {
+test("UcpBusinessSchema models each services entry as an array of service entities", () => {
   const ucp = specProfile.ucp;
   const singleObject = {
     ...ucp,
@@ -65,27 +65,27 @@ test("UcpSchema models each services entry as an array of service entities", () 
       Object.entries(ucp.services).map(([name, entries]) => [name, entries[0]])
     ),
   };
-  assert.ok(rejects(UcpSchema, singleObject));
+  assert.ok(rejects(UcpBusinessSchema, singleObject));
 });
 
-test("UcpSchema carries payment_handlers, which the business profile requires", () => {
+test("UcpBusinessSchema carries payment_handlers, which the business profile requires", () => {
   const { payment_handlers, ...withoutHandlers } = specProfile.ucp;
-  assert.ok(rejects(UcpSchema, withoutHandlers));
-  const parsed = UcpSchema.parse(specProfile.ucp);
+  assert.ok(rejects(UcpBusinessSchema, withoutHandlers));
+  const parsed = UcpBusinessSchema.parse(specProfile.ucp);
   assert.deepEqual(parsed.payment_handlers, payment_handlers);
 });
 
-test("UcpSchema does not require capabilities (base requires only version)", () => {
+test("UcpBusinessSchema does not require capabilities (base requires only version)", () => {
   const { capabilities, ...withoutCapabilities } = specProfile.ucp;
-  assert.ok(accepts(UcpSchema, withoutCapabilities));
+  assert.ok(accepts(UcpBusinessSchema, withoutCapabilities));
 });
 
-test("UcpSchema requires services, per business_schema", () => {
+test("UcpBusinessSchema requires services, per business_schema", () => {
   const { services, ...withoutServices } = specProfile.ucp;
-  assert.ok(rejects(UcpSchema, withoutServices));
+  assert.ok(rejects(UcpBusinessSchema, withoutServices));
 });
 
-test("UcpSchema models map_order as a record of key arrays (ucp.json#/$defs/map_order)", () => {
+test("UcpBusinessSchema models map_order as a record of key arrays (ucp.json#/$defs/map_order)", () => {
   // The second business profile example in the overview carries
   // map_order.payment_handlers; the envelope builder used to collapse the
   // map_order $ref to a string and rejected it.
@@ -94,16 +94,18 @@ test("UcpSchema models map_order as a record of key arrays (ucp.json#/$defs/map_
     ...ucp,
     map_order: { payment_handlers: Object.keys(ucp.payment_handlers) },
   };
-  assert.ok(accepts(UcpSchema, ordered));
-  assert.ok(rejects(UcpSchema, { ...ucp, map_order: "payment_handlers" }));
+  assert.ok(accepts(UcpBusinessSchema, ordered));
+  assert.ok(
+    rejects(UcpBusinessSchema, { ...ucp, map_order: "payment_handlers" })
+  );
 });
 
-test("UcpSchema types supported_versions values as strings, not any", () => {
+test("UcpBusinessSchema types supported_versions values as strings, not any", () => {
   // business_schema declares supported_versions as version key to profile URI.
   // toCompatLeaf widened the value to any, so a number passed.
   const ucp = specProfile.ucp;
   assert.ok(
-    accepts(UcpSchema, {
+    accepts(UcpBusinessSchema, {
       ...ucp,
       supported_versions: {
         "2026-04-08": "https://example.com/.well-known/ucp",
@@ -111,10 +113,13 @@ test("UcpSchema types supported_versions values as strings, not any", () => {
     })
   );
   assert.ok(
-    rejects(UcpSchema, { ...ucp, supported_versions: { "2026-04-08": 1 } })
+    rejects(UcpBusinessSchema, {
+      ...ucp,
+      supported_versions: { "2026-04-08": 1 },
+    })
   );
   assert.ok(
-    rejects(UcpSchema, {
+    rejects(UcpBusinessSchema, {
       ...ucp,
       supported_versions: { "not-a-version": "https://e.example" },
     })

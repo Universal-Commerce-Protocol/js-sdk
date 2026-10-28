@@ -15,9 +15,11 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { GetProductResponseSchema } = require("./.dist/spec_generated.js");
+const {
+  CatalogGetProductResponseSchema,
+} = require("./.dist/spec_generated.js");
 
-test("GetProductResponseSchema keeps detail option value availability", () => {
+test("CatalogGetProductResponseSchema keeps detail option value availability", () => {
   const product = {
     id: "prod_1",
     title: "Runner",
@@ -44,7 +46,7 @@ test("GetProductResponseSchema keeps detail option value availability", () => {
       },
     ],
   };
-  const result = GetProductResponseSchema.safeParse({
+  const result = CatalogGetProductResponseSchema.safeParse({
     ucp: { version: "2026-08-25" },
     product,
   });
@@ -54,7 +56,7 @@ test("GetProductResponseSchema keeps detail option value availability", () => {
     product.options[0].values
   );
   assert.equal(
-    GetProductResponseSchema.safeParse({
+    CatalogGetProductResponseSchema.safeParse({
       ucp: { version: "2026-08-25" },
       product: { ...product, options: [{ name: "Size", values: [] }] },
     }).success,

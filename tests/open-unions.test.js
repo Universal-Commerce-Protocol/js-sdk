@@ -29,6 +29,7 @@ const {
   FulfillmentMethodCreateRequestSchema,
   FulfillmentMethodUpdateRequestSchema,
   FulfillmentVariantSchema,
+  ShippingMethodCreateRequestSchema,
   ShippingMethodSchema,
   PickupMethodSchema,
   MediaSchema,
@@ -115,9 +116,9 @@ test("FulfillmentDestinationSchema and FulfillmentMethodSchema reject missing or
   );
 });
 
-test("FulfillmentDestinationSchema rejects malformed known variants instead of falling back to base", () => {
+test("ShippingDestinationSchema and LocationDestinationSchema reject malformed variant fields", () => {
   assert.equal(
-    FulfillmentDestinationSchema.safeParse({
+    ShippingDestinationSchema.safeParse({
       id: "dest_1",
       type: "shipping_address",
       postal_code: 12345,
@@ -125,21 +126,12 @@ test("FulfillmentDestinationSchema rejects malformed known variants instead of f
     false
   );
   assert.equal(
-    FulfillmentDestinationSchema.safeParse({
+    LocationDestinationSchema.safeParse({
       id: "loc_1",
       type: "business_location",
     }).success,
     false
   );
-  assert.equal(
-    FulfillmentDestinationBaseSchema.safeParse({
-      id: "dest_1",
-      type: "shipping_address",
-    }).success,
-    false
-  );
-  assert.ok(ShippingDestinationSchema);
-  assert.ok(LocationDestinationSchema);
 });
 
 test("FulfillmentMethodSchema validates known shipping and pickup variants and preserves unknown variants", () => {
@@ -262,9 +254,9 @@ test("CheckoutSchema preserves known and unknown fulfillment methods and destina
   );
 });
 
-test("FulfillmentMethod Create/Update request open unions reject malformed known variants and preserve unknown variants", () => {
+test("FulfillmentMethod Create/Update request schemas reject malformed shipping variants and preserve unknown variants", () => {
   assert.equal(
-    FulfillmentMethodCreateRequestSchema.safeParse({
+    ShippingMethodCreateRequestSchema.safeParse({
       type: "shipping",
       destinations: [{ postal_code: 999 }],
     }).success,
@@ -290,7 +282,7 @@ test("FulfillmentMethod Create/Update request open unions reject malformed known
   assert.deepEqual(updateRes.data, customUpdate);
 });
 
-test("ProviderSchema validates known oauth2 variant, rejects incomplete oauth2, and preserves unknown provider types", () => {
+test("ProviderSchema validates known oauth2 variant, Oauth2ProviderSchema rejects incomplete oauth2, and ProviderSchema preserves unknown provider types", () => {
   const oauth2 = {
     type: "oauth2",
     auth_url: "https://auth.example.com",
@@ -298,9 +290,12 @@ test("ProviderSchema validates known oauth2 variant, rejects incomplete oauth2, 
   };
   assert.ok(ProviderSchema.safeParse(oauth2).success);
   assert.ok(Oauth2ProviderSchema.safeParse(oauth2).success);
+  assert.ok(ProviderBaseSchema);
 
-  assert.equal(ProviderSchema.safeParse({ type: "oauth2" }).success, false);
-  assert.equal(ProviderBaseSchema.safeParse({ type: "oauth2" }).success, false);
+  assert.equal(
+    Oauth2ProviderSchema.safeParse({ type: "oauth2" }).success,
+    false
+  );
 
   const customIdp = {
     type: "com.example.passkey_provider",
@@ -438,16 +433,8 @@ test("MediaSchema validates known image, video, external_video, and model_3d var
   assert.deepEqual(parsedModel3d.data, model3dPayload);
 });
 
-test("MediaSchema and MediaBaseSchema reject malformed known variants without falling back to MediaBaseSchema", () => {
+test("MediaSchema rejects malformed media fields and missing/non-string discriminators", () => {
   for (const knownTag of ["image", "video", "external_video", "model_3d"]) {
-    assert.equal(
-      MediaBaseSchema.safeParse({
-        type: knownTag,
-        url: "https://example.com/media/item",
-      }).success,
-      false,
-      `MediaBaseSchema must reject known tag ${knownTag}`
-    );
     assert.equal(
       MediaSchema.safeParse({
         type: knownTag,
