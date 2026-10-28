@@ -33,8 +33,13 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  UcpResponseSchema,
-  CheckoutResponseSchema,
+  CheckoutSchema,
+  LocationFilterSchema,
+  LocationSearchRequestSchema,
+  ResponseCartSchema,
+  ResponseCheckoutSchema,
+  ResponseOrderSchema,
+  UcpBaseSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -97,12 +102,12 @@ const envelopeWithHandlers = {
 // --- payment_handlers: modeled with the REAL response shape -----------------
 
 test("envelope accepts a golden-snapshot-shaped payment handler (available_instruments/schema/spec)", () => {
-  assert.ok(accepts(UcpResponseSchema, envelopeWithHandlers));
+  assert.ok(accepts(ResponseCheckoutSchema, envelopeWithHandlers));
 });
 
 test("envelope accepts a minimal handler carrying only the required {id, version}", () => {
   assert.ok(
-    accepts(UcpResponseSchema, {
+    accepts(ResponseCheckoutSchema, {
       version: "2026-04-08",
       payment_handlers: { "com.example": [{ id: "h", version: "2026-04-08" }] },
     })
@@ -110,7 +115,7 @@ test("envelope accepts a minimal handler carrying only the required {id, version
 });
 
 test("envelope PRESERVES payment_handlers on parse (was silently stripped)", () => {
-  const result = UcpResponseSchema.safeParse(envelopeWithHandlers);
+  const result = ResponseCheckoutSchema.safeParse(envelopeWithHandlers);
   assert.ok(result.success);
   assert.deepEqual(
     result.data.payment_handlers,
@@ -120,13 +125,13 @@ test("envelope PRESERVES payment_handlers on parse (was silently stripped)", () 
 
 test("envelope rejects a handler missing the required id / version", () => {
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
       payment_handlers: { "com.example": [{ version: "2026-04-08" }] }, // no id
     })
   );
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
       payment_handlers: { "com.example": [{ id: "h" }] }, // no version
     })
@@ -137,7 +142,7 @@ test("envelope rejects the stale legacy handler fields as required (config_schem
   // The pre-fix schema REQUIRED these; a real response never sends them. A
   // handler with only {id, version} must now pass (proves they are gone).
   assert.ok(
-    accepts(UcpResponseSchema, {
+    accepts(ResponseCheckoutSchema, {
       version: "2026-04-08",
       payment_handlers: { "com.example": [{ id: "h", version: "2026-04-08" }] },
     })
@@ -146,7 +151,7 @@ test("envelope rejects the stale legacy handler fields as required (config_schem
 
 test("envelope enforces available_instruments minItems: 1 when present", () => {
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
       payment_handlers: {
         "com.example": [
@@ -159,7 +164,7 @@ test("envelope enforces available_instruments minItems: 1 when present", () => {
 
 test("envelope rejects a payment_handlers registry value that is not an array", () => {
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
       payment_handlers: { "com.example": goldenHandler }, // object, not array
     })
@@ -169,7 +174,7 @@ test("envelope rejects a payment_handlers registry value that is not an array", 
 // --- the FULL golden envelope: all registries together ----------------------
 
 test("envelope ACCEPTS the full golden checkout ucp envelope and RETAINS every registry", () => {
-  const result = UcpResponseSchema.safeParse(goldenCheckoutEnvelope);
+  const result = ResponseCheckoutSchema.safeParse(goldenCheckoutEnvelope);
   assert.ok(
     result.success,
     "golden checkout envelope must validate: " +
@@ -189,8 +194,9 @@ test("envelope ACCEPTS the full golden checkout ucp envelope and RETAINS every r
 
 test("envelope accepts a minimal capability carrying only the required {version}", () => {
   assert.ok(
-    accepts(UcpResponseSchema, {
+    accepts(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       capabilities: { "dev.x": [{ version: "2026-04-08" }] },
     })
   );
@@ -198,14 +204,16 @@ test("envelope accepts a minimal capability carrying only the required {version}
 
 test("envelope accepts capability `extends` as both string and string[]", () => {
   assert.ok(
-    accepts(UcpResponseSchema, {
+    accepts(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       capabilities: { "dev.x": [{ extends: "a.b", version: "2026-04-08" }] },
     })
   );
   assert.ok(
-    accepts(UcpResponseSchema, {
+    accepts(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       capabilities: {
         "dev.x": [{ extends: ["a.b", "c.d"], version: "2026-04-08" }],
       },
@@ -215,8 +223,9 @@ test("envelope accepts capability `extends` as both string and string[]", () => 
 
 test("envelope rejects a capability missing the required version", () => {
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       capabilities: { "dev.x": [{ schema: "https://example.com/s.json" }] },
     })
   );
@@ -227,23 +236,26 @@ test("envelope rejects a capability missing the required version", () => {
 test("envelope accepts and PRESERVES a services registry (service response shape)", () => {
   const env = {
     version: "2026-04-08",
+    payment_handlers: {},
     services: { "com.example": [serviceEntry] },
   };
-  const result = UcpResponseSchema.safeParse(env);
+  const result = ResponseCheckoutSchema.safeParse(env);
   assert.ok(result.success, "services envelope must validate");
   assert.deepEqual(result.data.services, env.services);
 });
 
 test("envelope rejects a service missing the required transport / version", () => {
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       services: { "com.example": [{ version: "2026-04-08" }] }, // no transport
     })
   );
   assert.ok(
-    rejects(UcpResponseSchema, {
+    rejects(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       services: { "com.example": [{ transport: "rest" }] }, // no version
     })
   );
@@ -256,8 +268,9 @@ test("envelope rejects malformed registry keys", () => {
     ["services", [serviceEntry]],
   ]) {
     assert.ok(
-      rejects(UcpResponseSchema, {
+      rejects(ResponseCheckoutSchema, {
         version: "2026-04-08",
+        payment_handlers: {},
         [registry]: { "bad KEY!": value },
       }),
       `${registry} must reject keys outside the reverse-domain pattern`
@@ -266,10 +279,11 @@ test("envelope rejects malformed registry keys", () => {
 });
 
 test("envelope accepts reverse-domain registry keys", () => {
-  assert.ok(accepts(UcpResponseSchema, goldenCheckoutEnvelope));
+  assert.ok(accepts(ResponseCheckoutSchema, goldenCheckoutEnvelope));
   assert.ok(
-    accepts(UcpResponseSchema, {
+    accepts(ResponseCheckoutSchema, {
       version: "2026-04-08",
+      payment_handlers: {},
       services: { "com.example.service": [serviceEntry] },
     })
   );
@@ -278,7 +292,7 @@ test("envelope accepts reverse-domain registry keys", () => {
 // --- status: modeled and retained (base enum success/error) -----------------
 
 test("envelope RETAINS status (was stripped); accepts success/error, rejects other", () => {
-  const err = UcpResponseSchema.safeParse({
+  const err = UcpBaseSchema.safeParse({
     version: "2026-04-08",
     status: "error",
   });
@@ -289,30 +303,30 @@ test("envelope RETAINS status (was stripped); accepts success/error, rejects oth
     "status must be retained, not stripped"
   );
   assert.ok(
-    accepts(UcpResponseSchema, { version: "2026-04-08", status: "success" })
+    accepts(UcpBaseSchema, { version: "2026-04-08", status: "success" })
   );
   assert.ok(
-    rejects(UcpResponseSchema, { version: "2026-04-08", status: "pending" })
+    rejects(UcpBaseSchema, { version: "2026-04-08", status: "pending" })
   );
 });
 
 // --- base required-ness: only version is required ---------------------------
 
 test("envelope no longer wrongly requires capabilities (base requires only version)", () => {
-  assert.ok(accepts(UcpResponseSchema, { version: "2026-04-08" }));
+  assert.ok(accepts(UcpBaseSchema, { version: "2026-04-08" }));
 });
 
 test("envelope enforces the base version format ^\\d{4}-\\d{2}-\\d{2}$", () => {
-  assert.ok(rejects(UcpResponseSchema, { version: "not-a-date" }));
+  assert.ok(rejects(UcpBaseSchema, { version: "not-a-date" }));
 });
 
 // --- the checkout response type carries the fixed envelope ------------------
 
-test("CheckoutResponseSchema.ucp models payment_handlers, services, and status", () => {
+test("CheckoutSchema.ucp models payment_handlers, services, and status", () => {
   const shape =
-    typeof CheckoutResponseSchema._def?.shape === "function"
-      ? CheckoutResponseSchema._def.shape()
-      : CheckoutResponseSchema.shape;
+    typeof CheckoutSchema._def?.shape === "function"
+      ? CheckoutSchema._def.shape()
+      : CheckoutSchema.shape;
   const ucpSchema = shape.ucp;
   const ucpShape =
     typeof ucpSchema._def?.shape === "function"
@@ -332,11 +346,8 @@ test("CheckoutResponseSchema.ucp models payment_handlers, services, and status",
 });
 
 // --- the checkout response type must REQUIRE payment_handlers ---------------
-// ucp.json#/$defs/response_checkout_schema.allOf[1] adds payment_handlers to
-// base's required set, so the checkout-only envelope cannot be the shared one
-// (which keeps everything optional so order/cart/catalog are not false-rejected).
 
-test("CheckoutResponseSchema.ucp REQUIRES payment_handlers", () => {
+test("CheckoutSchema.ucp REQUIRES payment_handlers", () => {
   const checkoutWithoutHandlers = {
     id: "co_1",
     currency: "USD",
@@ -349,10 +360,10 @@ test("CheckoutResponseSchema.ucp REQUIRES payment_handlers", () => {
     line_items: [],
     ucp: { version: "2026-04-08" }, // no payment_handlers -> must reject
   };
-  assert.ok(rejects(CheckoutResponseSchema, checkoutWithoutHandlers));
+  assert.ok(rejects(CheckoutSchema, checkoutWithoutHandlers));
 });
 
-test("CheckoutResponseSchema.ucp accepts payment_handlers when present", () => {
+test("CheckoutSchema.ucp accepts payment_handlers when present", () => {
   const checkoutWithHandlers = {
     id: "co_1",
     currency: "USD",
@@ -370,12 +381,37 @@ test("CheckoutResponseSchema.ucp accepts payment_handlers when present", () => {
       },
     },
   };
-  assert.ok(accepts(CheckoutResponseSchema, checkoutWithHandlers));
+  assert.ok(accepts(CheckoutSchema, checkoutWithHandlers));
 });
 
-// The shared envelope stays permissive so order/cart/catalog responses are not
-// false-rejected: they must still pass with a bare ucp { version }.
+// Non-checkout response envelopes keep payment_handlers optional so order/cart
+// responses pass with a bare ucp { version }.
 
-test("shared UcpResponseSchema keeps payment_handlers optional for other responses", () => {
-  assert.ok(accepts(UcpResponseSchema, { version: "2026-04-08" }));
+test("shared UcpBaseSchema and non-checkout response envelopes keep payment_handlers optional", () => {
+  for (const schema of [
+    UcpBaseSchema,
+    ResponseOrderSchema,
+    ResponseCartSchema,
+  ]) {
+    assert.ok(accepts(schema, { version: "2026-04-08" }));
+  }
+});
+
+test("LocationFilterSchema and LocationSearchRequestSchema accept RFC 3339 open_at timestamps with UTC Z and numeric offsets", () => {
+  for (const openAt of ["2026-11-01T09:00:00Z", "2026-11-01T09:00:00+05:30"]) {
+    const filterResult = LocationFilterSchema.safeParse({
+      hours: { open_at: openAt },
+    });
+    assert.ok(filterResult.success, JSON.stringify(filterResult.error?.issues));
+    assert.equal(filterResult.data.hours.open_at, openAt);
+
+    const searchResult = LocationSearchRequestSchema.safeParse({
+      filters: { hours: { open_at: openAt } },
+    });
+    assert.ok(searchResult.success, JSON.stringify(searchResult.error?.issues));
+    assert.equal(searchResult.data.filters.hours.open_at, openAt);
+  }
+  assert.ok(
+    rejects(LocationFilterSchema, { hours: { open_at: "not-a-datetime" } })
+  );
 });

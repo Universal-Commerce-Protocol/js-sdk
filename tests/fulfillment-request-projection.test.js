@@ -160,10 +160,16 @@ test("FulfillmentMethodUpdateRequestSchema requires only line_item_ids", () => {
 
 // --- destinations are VALIDATED, not merely passed through -----------------
 
-for (const [label, schemaName, extra] of [
-  ["create", "FulfillmentMethodCreateRequestSchema", {}],
+for (const [label, schemaName, unionName, extra] of [
+  [
+    "create",
+    "ShippingMethodCreateRequestSchema",
+    "FulfillmentMethodCreateRequestSchema",
+    {},
+  ],
   [
     "update",
+    "ShippingMethodUpdateRequestSchema",
     "FulfillmentMethodUpdateRequestSchema",
     { line_item_ids: ["li_1"] },
   ],
@@ -247,8 +253,8 @@ for (const [label, schemaName, extra] of [
   });
 
   test(`${label} request never silently drops destinations, whatever the method type`, () => {
-    const schema = g[schemaName];
-    assert.ok(schema, `${schemaName} is not exported`);
+    const schema = g[unionName];
+    assert.ok(schema, `${unionName} is not exported`);
     for (const type of ["pickup", "curbside"]) {
       const result = schema.safeParse({
         type,
@@ -333,7 +339,7 @@ const oracle = {
     selected_destination_id: "optional",
     type: "required",
   },
-  ShippingMethodResponseSchema: {
+  ShippingMethodSchema: {
     destinations: "optional",
     groups: "optional",
     id: "required",
@@ -343,7 +349,7 @@ const oracle = {
   },
   FulfillmentCreateRequestSchema: { methods: "optional" },
   FulfillmentUpdateRequestSchema: { methods: "optional" },
-  FulfillmentResponseSchema: {
+  FulfillmentSchema: {
     available_methods: "optional",
     methods: "optional",
   },
@@ -352,13 +358,13 @@ const oracle = {
     id: "required",
     selected_option_id: "optional",
   },
-  FulfillmentGroupResponseSchema: {
+  FulfillmentGroupSchema: {
     id: "required",
     line_item_ids: "required",
     options: "optional",
     selected_option_id: "optional",
   },
-  FulfillmentOptionResponseSchema: {
+  FulfillmentOptionSchema: {
     carrier: "optional",
     description: "optional",
     earliest_fulfillment_time: "optional",
@@ -367,12 +373,12 @@ const oracle = {
     title: "required",
     totals: "required",
   },
-  FulfillmentOptionBaseResponseSchema: {
+  FulfillmentOptionBaseSchema: {
     description: "optional",
     id: "required",
     title: "required",
   },
-  FulfillmentAvailableMethodResponseSchema: {
+  FulfillmentAvailableMethodSchema: {
     description: "optional",
     fulfillable_on: "optional",
     line_item_ids: "required",
@@ -389,12 +395,12 @@ const oracle = {
     id: "optional",
     type: "optional",
   },
-  ShippingDestinationResponseSchema: {
+  ShippingDestinationSchema: {
     ...postalAddressOptional,
     id: "required",
     type: "required",
   },
-  BusinessLocationDestinationResponseSchema: {
+  LocationDestinationSchema: {
     address: "optional",
     id: "required",
     name: "required",
@@ -421,7 +427,7 @@ test("request destinations are typed by the shipping branch; response destinatio
   );
   assert.equal(
     itemsOf(g.FulfillmentMethodBaseSchema, "destinations"),
-    g.FulfillmentDestinationResponseSchema
+    g.FulfillmentDestinationSchema
   );
 });
 
@@ -436,7 +442,7 @@ test("groups and methods are typed by the matching variant", () => {
   );
   assert.equal(
     itemsOf(g.FulfillmentMethodBaseSchema, "groups"),
-    g.FulfillmentGroupResponseSchema
+    g.FulfillmentGroupSchema
   );
   assert.equal(
     itemsOf(g.FulfillmentCreateRequestSchema, "methods"),
@@ -447,68 +453,43 @@ test("groups and methods are typed by the matching variant", () => {
     g.FulfillmentMethodUpdateRequestSchema
   );
   assert.equal(
-    itemsOf(g.FulfillmentResponseSchema, "methods"),
-    g.FulfillmentMethodResponseSchema
+    itemsOf(g.FulfillmentSchema, "methods"),
+    g.FulfillmentMethodSchema
   );
 });
 
 // --- the response side still requires what the spec requires ---------------
 
-test("FulfillmentMethodResponseSchema still requires id, type and line_item_ids", () => {
+test("FulfillmentMethodSchema still requires id, type and line_item_ids", () => {
   const full = { id: "m1", type: "shipping", line_item_ids: ["li_1"] };
-  assert.ok(accepts(g.FulfillmentMethodResponseSchema, full));
+  assert.ok(accepts(g.FulfillmentMethodSchema, full));
   for (const missing of ["id", "type", "line_item_ids"]) {
     const value = { ...full };
     delete value[missing];
     assert.ok(
-      rejects(g.FulfillmentMethodResponseSchema, value),
+      rejects(g.FulfillmentMethodSchema, value),
       `response must reject a method without ${missing}`
     );
   }
 });
 
-test("ShippingDestinationResponseSchema still requires id and type", () => {
+test("ShippingDestinationSchema still requires id and type", () => {
   const full = { id: "dest_1", type: "shipping_address", ...address };
-  assert.ok(accepts(g.ShippingDestinationResponseSchema, full));
-  assert.ok(
-    rejects(g.ShippingDestinationResponseSchema, { type: "shipping_address" })
-  );
-  assert.ok(rejects(g.ShippingDestinationResponseSchema, { id: "dest_1" }));
+  assert.ok(accepts(g.ShippingDestinationSchema, full));
+  assert.ok(rejects(g.ShippingDestinationSchema, { type: "shipping_address" }));
+  assert.ok(rejects(g.ShippingDestinationSchema, { id: "dest_1" }));
 });
 
-test("FulfillmentGroupResponseSchema still requires id and line_item_ids", () => {
+test("FulfillmentGroupSchema still requires id and line_item_ids", () => {
   assert.ok(
-    accepts(g.FulfillmentGroupResponseSchema, {
+    accepts(g.FulfillmentGroupSchema, {
       id: "g1",
       line_item_ids: ["li_1"],
     })
   );
-  assert.ok(rejects(g.FulfillmentGroupResponseSchema, { id: "g1" }));
-  assert.ok(
-    rejects(g.FulfillmentGroupResponseSchema, { line_item_ids: ["li_1"] })
-  );
+  assert.ok(rejects(g.FulfillmentGroupSchema, { id: "g1" }));
+  assert.ok(rejects(g.FulfillmentGroupSchema, { line_item_ids: ["li_1"] }));
 });
-
-// --- compatibility: the unified names keep resolving to the response shape --
-
-const compatibilityAliases = [
-  ["BusinessLocationDestination", "BusinessLocationDestinationResponse"],
-  ["Fulfillment", "FulfillmentResponse"],
-  ["FulfillmentAvailableMethod", "FulfillmentAvailableMethodResponse"],
-  ["FulfillmentDestination", "FulfillmentDestinationResponse"],
-  ["FulfillmentGroup", "FulfillmentGroupResponse"],
-  ["FulfillmentMethod", "FulfillmentMethodResponse"],
-  ["FulfillmentOption", "FulfillmentOptionResponse"],
-  ["FulfillmentOptionBase", "FulfillmentOptionBaseResponse"],
-  ["ShippingDestination", "ShippingDestinationResponse"],
-];
-
-for (const [alias, target] of compatibilityAliases) {
-  test(`${alias}Schema is a compatibility alias of ${target}Schema`, () => {
-    assert.ok(g[`${target}Schema`], `${target}Schema is not exported`);
-    assert.equal(g[`${alias}Schema`], g[`${target}Schema`]);
-  });
-}
 
 test("FulfillmentSchema keeps meaning the checkout fulfillment container, not order.json's inline fulfillment", () => {
   assert.deepEqual(Object.keys(fieldTable(g.FulfillmentSchema)), [
@@ -527,8 +508,8 @@ test("FulfillmentSchema keeps meaning the checkout fulfillment container, not or
 
 // --- end to end through the checkout capability schemas --------------------
 
-test("CheckoutWithFulfillmentCreateRequestSchema accepts a shipping method with destinations and retains them", () => {
-  const result = g.CheckoutWithFulfillmentCreateRequestSchema.safeParse({
+test("CheckoutCreateRequestSchema accepts a shipping method with destinations and retains them", () => {
+  const result = g.CheckoutCreateRequestSchema.safeParse({
     line_items: [{ item: { id: "sku_1" }, quantity: 1 }],
     fulfillment: { methods: [P4] },
   });
@@ -539,8 +520,8 @@ test("CheckoutWithFulfillmentCreateRequestSchema accepts a shipping method with 
   assert.deepEqual(result.data.fulfillment.methods[0].destinations, [address]);
 });
 
-test("CheckoutWithFulfillmentUpdateRequestSchema accepts a shipping method with destinations and retains them", () => {
-  const result = g.CheckoutWithFulfillmentUpdateRequestSchema.safeParse({
+test("CheckoutUpdateRequestSchema accepts a shipping method with destinations and retains them", () => {
+  const result = g.CheckoutUpdateRequestSchema.safeParse({
     line_items: [{ id: "li_1", item: { id: "sku_1" }, quantity: 1 }],
     fulfillment: { methods: [P4_UPDATE] },
   });
