@@ -59,23 +59,36 @@ export type A2aMessageRequestParams = z.infer<
 export const IdSchema = z.union([z.string(), z.number(), z.null()]);
 export type Id = z.infer<typeof IdSchema>;
 
-export const A2aMessageRequestSchema = z
+export const JsonrpcRequestSchema = z
   .object({
     jsonrpc: z.literal("2.0"),
     id: IdSchema.optional(),
-    method: z.literal("message/send"),
+    method: z.string().min(1),
+    params: z.union([z.record(z.any()), z.array(z.any())]).optional(),
+  })
+  .strict();
+export type JsonrpcRequest = z.infer<typeof JsonrpcRequestSchema>;
+
+export const A2aMessageRequestSchema = z
+  .object({
+    method: z.literal("message/send").optional(),
     params: A2aMessageRequestParamsSchema,
   })
-  .catchall(z.any());
+  .catchall(z.any())
+  .and(JsonrpcRequestSchema);
 export type A2aMessageRequest = z.infer<typeof A2aMessageRequestSchema>;
 
+export const JsonrpcSuccessResponseSchema = z
+  .object({ jsonrpc: z.literal("2.0"), id: IdSchema, result: z.any() })
+  .strict();
+export type JsonrpcSuccessResponse = z.infer<
+  typeof JsonrpcSuccessResponseSchema
+>;
+
 export const A2aMessageResponseSchema = z
-  .object({
-    jsonrpc: z.literal("2.0"),
-    id: IdSchema,
-    result: A2aMessageMessageSchema,
-  })
-  .catchall(z.any());
+  .object({ result: A2aMessageMessageSchema.optional() })
+  .catchall(z.any())
+  .and(JsonrpcSuccessResponseSchema);
 export type A2aMessageResponse = z.infer<typeof A2aMessageResponseSchema>;
 
 export const ExtensionSchema = z
@@ -603,6 +616,7 @@ export const CapabilityResponseSchema = z
   .catchall(z.any());
 export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
 
+/** @deprecated use PAN Credential (`pan_credential.json`) or Network Token Credential (`network_token_credential.json`). A card credential containing sensitive payment card details including raw Primary Account Numbers (PANs). This credential type MUST NOT be used for checkout, only with payment handlers that tokenize or encrypt credentials. CRITICAL: Both parties handling CardCredential (sender and receiver) MUST be PCI DSS compliant. Transmission MUST use HTTPS/TLS with strong cipher suites. */
 export const CardCredentialSchema = z
   .object({
     type: z.literal("card"),
@@ -616,6 +630,7 @@ export const CardCredentialSchema = z
     eci_value: z.string().optional(),
   })
   .catchall(z.any());
+/** @deprecated use PAN Credential (`pan_credential.json`) or Network Token Credential (`network_token_credential.json`). A card credential containing sensitive payment card details including raw Primary Account Numbers (PANs). This credential type MUST NOT be used for checkout, only with payment handlers that tokenize or encrypt credentials. CRITICAL: Both parties handling CardCredential (sender and receiver) MUST be PCI DSS compliant. Transmission MUST use HTTPS/TLS with strong cipher suites. */
 export type CardCredential = z.infer<typeof CardCredentialSchema>;
 
 export const CardPaymentInstrumentDisplaySchema = z
@@ -1337,15 +1352,159 @@ export type FulfillmentVariantSeller = z.infer<
   typeof FulfillmentVariantSellerSchema
 >;
 
-export const MediaSchema = z
+export const MediaBasePreviewSchema = z
   .object({
-    type: z.string(),
     url: z.string().url(),
-    alt_text: z.string().optional(),
     width: z.number().int().gte(1).optional(),
     height: z.number().int().gte(1).optional(),
   })
   .catchall(z.any());
+export type MediaBasePreview = z.infer<typeof MediaBasePreviewSchema>;
+
+export const MediaSourceSchema = z
+  .object({
+    url: z.string().url(),
+    mime_type: z.string().optional(),
+    format: z.string().optional(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+    filesize: z.number().int().gte(1).optional(),
+  })
+  .catchall(z.any());
+export type MediaSource = z.infer<typeof MediaSourceSchema>;
+
+export const MediaBaseSchema = z
+  .object({
+    type: z.string().superRefine((value, ctx) => {
+      if (
+        (
+          ["external_video", "image", "model_3d", "video"] as readonly string[]
+        ).includes(value)
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Invalid discriminator value",
+          fatal: true,
+        });
+      }
+    }),
+    url: z.string().url(),
+    name: z.string().optional(),
+    alt_text: z.string().optional(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+    duration: z.number().int().gte(1).optional(),
+    preview: MediaBasePreviewSchema.optional(),
+    sources: z.array(MediaSourceSchema).optional(),
+  })
+  .catchall(z.any());
+export type MediaBase = z.infer<typeof MediaBaseSchema>;
+
+export const MediaExternalVideoPreviewSchema = z
+  .object({
+    url: z.string().url(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+  })
+  .catchall(z.any());
+export type MediaExternalVideoPreview = z.infer<
+  typeof MediaExternalVideoPreviewSchema
+>;
+
+export const MediaExternalVideoSchema = z
+  .object({
+    type: z.literal("external_video"),
+    url: z.string().url(),
+    name: z.string().optional(),
+    alt_text: z.string().optional(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+    duration: z.number().int().gte(1).optional(),
+    preview: MediaExternalVideoPreviewSchema.optional(),
+    sources: z.array(MediaSourceSchema).optional(),
+  })
+  .catchall(z.any());
+export type MediaExternalVideo = z.infer<typeof MediaExternalVideoSchema>;
+
+export const MediaImagePreviewSchema = z
+  .object({
+    url: z.string().url(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+  })
+  .catchall(z.any());
+export type MediaImagePreview = z.infer<typeof MediaImagePreviewSchema>;
+
+export const MediaImageSchema = z
+  .object({
+    type: z.literal("image"),
+    url: z.string().url(),
+    name: z.string().optional(),
+    alt_text: z.string().optional(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+    duration: z.number().int().gte(1).optional(),
+    preview: MediaImagePreviewSchema.optional(),
+    sources: z.array(MediaSourceSchema).optional(),
+  })
+  .catchall(z.any());
+export type MediaImage = z.infer<typeof MediaImageSchema>;
+
+export const MediaModel3dPreviewSchema = z
+  .object({
+    url: z.string().url(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+  })
+  .catchall(z.any());
+export type MediaModel3dPreview = z.infer<typeof MediaModel3dPreviewSchema>;
+
+export const MediaModel3dSchema = z
+  .object({
+    type: z.literal("model_3d"),
+    url: z.string().url(),
+    name: z.string().optional(),
+    alt_text: z.string().optional(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+    duration: z.number().int().gte(1).optional(),
+    preview: MediaModel3dPreviewSchema.optional(),
+    sources: z.array(MediaSourceSchema).optional(),
+  })
+  .catchall(z.any());
+export type MediaModel3d = z.infer<typeof MediaModel3dSchema>;
+
+export const MediaVideoPreviewSchema = z
+  .object({
+    url: z.string().url(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+  })
+  .catchall(z.any());
+export type MediaVideoPreview = z.infer<typeof MediaVideoPreviewSchema>;
+
+export const MediaVideoSchema = z
+  .object({
+    type: z.literal("video"),
+    url: z.string().url(),
+    name: z.string().optional(),
+    alt_text: z.string().optional(),
+    width: z.number().int().gte(1).optional(),
+    height: z.number().int().gte(1).optional(),
+    duration: z.number().int().gte(1).optional(),
+    preview: MediaVideoPreviewSchema.optional(),
+    sources: z.array(MediaSourceSchema).optional(),
+  })
+  .catchall(z.any());
+export type MediaVideo = z.infer<typeof MediaVideoSchema>;
+
+export const MediaSchema = z.union([
+  MediaExternalVideoSchema,
+  MediaImageSchema,
+  MediaModel3dSchema,
+  MediaVideoSchema,
+  MediaBaseSchema,
+]);
 export type Media = z.infer<typeof MediaSchema>;
 
 export const PriceSchema = z
@@ -2057,7 +2216,13 @@ export const CheckoutCompleteRequestSchema = z
     signals: SignalsSchema.optional(),
     attribution: AttributionSchema.optional(),
     payment: PaymentCompleteRequestSchema,
-    cart_id: z.string().optional(),
+    /** @deprecated Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload. */
+    cart_id: z
+      .string()
+      .optional()
+      .describe(
+        "@deprecated Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload."
+      ),
     ap2: Ap2WithCheckoutMandateCompleteRequestSchema.optional(),
   })
   .catchall(z.any());
@@ -2424,24 +2589,17 @@ export const MethodSchema = z
 export type Method = z.infer<typeof MethodSchema>;
 
 export const EmbeddedMessageRequestSchema = z
-  .object({
-    jsonrpc: z.literal("2.0"),
-    id: IdSchema.optional(),
-    method: MethodSchema,
-    params: z.record(z.any()),
-  })
-  .catchall(z.any());
+  .object({ method: MethodSchema.optional(), params: z.record(z.any()) })
+  .catchall(z.any())
+  .and(JsonrpcRequestSchema);
 export type EmbeddedMessageRequest = z.infer<
   typeof EmbeddedMessageRequestSchema
 >;
 
 export const EmbeddedMessageResponseSchema = z
-  .object({
-    jsonrpc: z.literal("2.0"),
-    id: IdSchema,
-    result: z.record(z.any()),
-  })
-  .catchall(z.any());
+  .object({ result: z.record(z.any()).optional() })
+  .catchall(z.any())
+  .and(JsonrpcSuccessResponseSchema);
 export type EmbeddedMessageResponse = z.infer<
   typeof EmbeddedMessageResponseSchema
 >;
@@ -2695,23 +2853,6 @@ export const IdentityLinkingPlatformSchema = z
   .catchall(z.any());
 export type IdentityLinkingPlatform = z.infer<
   typeof IdentityLinkingPlatformSchema
->;
-
-export const JsonrpcRequestSchema = z
-  .object({
-    jsonrpc: z.literal("2.0"),
-    id: IdSchema.optional(),
-    method: z.string().min(1),
-    params: z.union([z.record(z.any()), z.array(z.any())]).optional(),
-  })
-  .strict();
-export type JsonrpcRequest = z.infer<typeof JsonrpcRequestSchema>;
-
-export const JsonrpcSuccessResponseSchema = z
-  .object({ jsonrpc: z.literal("2.0"), id: IdSchema, result: z.any() })
-  .strict();
-export type JsonrpcSuccessResponse = z.infer<
-  typeof JsonrpcSuccessResponseSchema
 >;
 
 export const JsonrpcSchema = z.union([
@@ -3098,12 +3239,11 @@ export type McpToolCallRequestParams = z.infer<
 
 export const McpToolCallRequestSchema = z
   .object({
-    jsonrpc: z.literal("2.0"),
-    id: IdSchema.optional(),
-    method: z.literal("tools/call"),
+    method: z.literal("tools/call").optional(),
     params: McpToolCallRequestParamsSchema,
   })
-  .catchall(z.any());
+  .catchall(z.any())
+  .and(JsonrpcRequestSchema);
 export type McpToolCallRequest = z.infer<typeof McpToolCallRequestSchema>;
 
 export const McpToolCallResponseResultSchema = z
@@ -3117,12 +3257,9 @@ export type McpToolCallResponseResult = z.infer<
 >;
 
 export const McpToolCallResponseSchema = z
-  .object({
-    jsonrpc: z.literal("2.0"),
-    id: IdSchema,
-    result: McpToolCallResponseResultSchema,
-  })
-  .catchall(z.any());
+  .object({ result: McpToolCallResponseResultSchema.optional() })
+  .catchall(z.any())
+  .and(JsonrpcSuccessResponseSchema);
 export type McpToolCallResponse = z.infer<typeof McpToolCallResponseSchema>;
 
 export const McpToolCallSchema = z.union([

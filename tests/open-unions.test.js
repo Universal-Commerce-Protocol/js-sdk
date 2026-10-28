@@ -16,7 +16,9 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  CardCredentialSchema,
   CheckoutSchema,
+  CheckoutCreateRequestSchema,
   CheckoutCompleteRequestSchema,
   FulfillmentDestinationSchema,
   FulfillmentDestinationBaseSchema,
@@ -26,8 +28,22 @@ const {
   FulfillmentMethodBaseSchema,
   FulfillmentMethodCreateRequestSchema,
   FulfillmentMethodUpdateRequestSchema,
+  FulfillmentVariantSchema,
   ShippingMethodSchema,
   PickupMethodSchema,
+  MediaSchema,
+  MediaBaseSchema,
+  MediaImageSchema,
+  MediaVideoSchema,
+  MediaExternalVideoSchema,
+  MediaModel3dSchema,
+  MediaSourceSchema,
+  MediaBasePreviewSchema,
+  MediaImagePreviewSchema,
+  MediaVideoPreviewSchema,
+  MediaExternalVideoPreviewSchema,
+  MediaModel3dPreviewSchema,
+  ProductSchema,
   ProviderSchema,
   ProviderBaseSchema,
   Oauth2ProviderSchema,
@@ -306,4 +322,367 @@ test("CheckoutCompleteRequestSchema accepts non-AP2 checkout completion payloads
     ap2: { checkout_mandate: "eyJhbGciOiJFZERTQSJ9.eyJ0ZXN0IjoxfQ.c2ln" },
   });
   assert.ok(withValidAp2.success);
+});
+
+test("Media variant schemas and subtypes are publicly exported", () => {
+  assert.ok(MediaSchema);
+  assert.ok(MediaBaseSchema);
+  assert.ok(MediaImageSchema);
+  assert.ok(MediaVideoSchema);
+  assert.ok(MediaExternalVideoSchema);
+  assert.ok(MediaModel3dSchema);
+  assert.ok(MediaSourceSchema);
+  assert.ok(MediaBasePreviewSchema);
+  assert.ok(MediaImagePreviewSchema);
+  assert.ok(MediaVideoPreviewSchema);
+  assert.ok(MediaExternalVideoPreviewSchema);
+  assert.ok(MediaModel3dPreviewSchema);
+  assert.ok(CardCredentialSchema);
+});
+
+test("MediaSchema validates known image, video, external_video, and model_3d variants with preview and sources", () => {
+  const imagePayload = {
+    type: "image",
+    url: "https://example.com/media/hero.jpg",
+    name: "Hero Image",
+    alt_text: "Front view of product",
+    width: 1200,
+    height: 800,
+    preview: {
+      url: "https://example.com/media/hero-thumb.jpg",
+      width: 300,
+      height: 200,
+    },
+    sources: [
+      {
+        url: "https://example.com/media/hero-2x.webp",
+        mime_type: "image/webp",
+        format: "webp",
+        width: 2400,
+        height: 1600,
+        filesize: 184320,
+      },
+    ],
+  };
+  assert.ok(MediaImageSchema.safeParse(imagePayload).success);
+  const parsedImage = MediaSchema.safeParse(imagePayload);
+  assert.ok(parsedImage.success);
+  assert.deepEqual(parsedImage.data, imagePayload);
+
+  const videoPayload = {
+    type: "video",
+    url: "https://example.com/media/demo.mp4",
+    name: "Product Demo",
+    alt_text: "360 spin video",
+    width: 1920,
+    height: 1080,
+    duration: 45,
+    preview: {
+      url: "https://example.com/media/demo-poster.jpg",
+      width: 1920,
+      height: 1080,
+    },
+    sources: [
+      {
+        url: "https://example.com/media/demo-1080p.mp4",
+        mime_type: "video/mp4",
+        format: "mp4",
+        width: 1920,
+        height: 1080,
+        filesize: 5242880,
+      },
+    ],
+  };
+  assert.ok(MediaVideoSchema.safeParse(videoPayload).success);
+  const parsedVideo = MediaSchema.safeParse(videoPayload);
+  assert.ok(parsedVideo.success);
+  assert.deepEqual(parsedVideo.data, videoPayload);
+
+  const externalVideoPayload = {
+    type: "external_video",
+    url: "https://video.example.com/watch?v=abc123",
+    name: "Launch Keynote",
+    duration: 180,
+    preview: {
+      url: "https://example.com/media/keynote-poster.jpg",
+      width: 1280,
+      height: 720,
+    },
+  };
+  assert.ok(MediaExternalVideoSchema.safeParse(externalVideoPayload).success);
+  const parsedExtVideo = MediaSchema.safeParse(externalVideoPayload);
+  assert.ok(parsedExtVideo.success);
+  assert.deepEqual(parsedExtVideo.data, externalVideoPayload);
+
+  const model3dPayload = {
+    type: "model_3d",
+    url: "https://example.com/media/chair.glb",
+    name: "3D Chair Model",
+    preview: {
+      url: "https://example.com/media/chair-preview.png",
+      width: 600,
+      height: 600,
+    },
+    sources: [
+      {
+        url: "https://example.com/media/chair.usdz",
+        mime_type: "model/vnd.usdz+zip",
+        format: "usdz",
+        filesize: 2097152,
+      },
+    ],
+  };
+  assert.ok(MediaModel3dSchema.safeParse(model3dPayload).success);
+  const parsedModel3d = MediaSchema.safeParse(model3dPayload);
+  assert.ok(parsedModel3d.success);
+  assert.deepEqual(parsedModel3d.data, model3dPayload);
+});
+
+test("MediaSchema and MediaBaseSchema reject malformed known variants without falling back to MediaBaseSchema", () => {
+  for (const knownTag of ["image", "video", "external_video", "model_3d"]) {
+    assert.equal(
+      MediaBaseSchema.safeParse({
+        type: knownTag,
+        url: "https://example.com/media/item",
+      }).success,
+      false,
+      `MediaBaseSchema must reject known tag ${knownTag}`
+    );
+    assert.equal(
+      MediaSchema.safeParse({
+        type: knownTag,
+      }).success,
+      false,
+      `MediaSchema must reject ${knownTag} missing url`
+    );
+    assert.equal(
+      MediaSchema.safeParse({
+        type: knownTag,
+        url: "not-a-valid-uri",
+      }).success,
+      false,
+      `MediaSchema must reject ${knownTag} with invalid URI`
+    );
+    assert.equal(
+      MediaSchema.safeParse({
+        type: knownTag,
+        url: "https://example.com/media/item",
+        width: 0,
+      }).success,
+      false,
+      `MediaSchema must reject ${knownTag} with width: 0`
+    );
+    assert.equal(
+      MediaSchema.safeParse({
+        type: knownTag,
+        url: "https://example.com/media/item",
+        duration: 0,
+      }).success,
+      false,
+      `MediaSchema must reject ${knownTag} with duration: 0`
+    );
+    assert.equal(
+      MediaSchema.safeParse({
+        type: knownTag,
+        url: "https://example.com/media/item",
+        preview: { url: "bad" },
+      }).success,
+      false,
+      `MediaSchema must reject ${knownTag} with invalid preview.url`
+    );
+    assert.equal(
+      MediaSchema.safeParse({
+        type: knownTag,
+        url: "https://example.com/media/item",
+        sources: [{ url: "https://example.com/a", filesize: 0 }],
+      }).success,
+      false,
+      `MediaSchema must reject ${knownTag} with sources[0].filesize: 0`
+    );
+  }
+
+  assert.equal(
+    MediaSchema.safeParse({ url: "https://example.com/media/no-type.jpg" })
+      .success,
+    false
+  );
+  assert.equal(
+    MediaSchema.safeParse({
+      type: 123,
+      url: "https://example.com/media/bad-type.jpg",
+    }).success,
+    false
+  );
+  assert.equal(
+    MediaSchema.safeParse({
+      type: null,
+      url: "https://example.com/media/null-type.jpg",
+    }).success,
+    false
+  );
+});
+
+test("MediaSchema preserves forward-compatible unknown media types and extra properties across ProductSchema and FulfillmentVariantSchema", () => {
+  const customHologram = {
+    type: "com.example.hologram",
+    url: "https://example.com/media/shoe.holo",
+    name: "Shoe Hologram",
+    duration: 30,
+    preview: {
+      url: "https://example.com/media/shoe-still.jpg",
+      width: 512,
+      height: 512,
+    },
+    sources: [
+      {
+        url: "https://example.com/media/shoe.holo",
+        mime_type: "application/x-example-holo",
+        format: "holo-v2",
+        filesize: 4096,
+      },
+    ],
+    "com.example.fov_degrees": 120,
+  };
+  const baseResult = MediaBaseSchema.safeParse(customHologram);
+  assert.ok(baseResult.success);
+  assert.deepEqual(baseResult.data, customHologram);
+
+  const unionResult = MediaSchema.safeParse(customHologram);
+  assert.ok(unionResult.success);
+  assert.deepEqual(unionResult.data, customHologram);
+
+  const audioMedia = {
+    type: "audio",
+    url: "https://example.com/media/chime.flac",
+    duration: 12,
+    codec: "flac",
+  };
+  const audioResult = MediaSchema.safeParse(audioMedia);
+  assert.ok(audioResult.success);
+  assert.deepEqual(audioResult.data, audioMedia);
+
+  assert.equal(
+    MediaSchema.safeParse({
+      type: "com.example.hologram",
+      url: "not-a-uri",
+    }).success,
+    false
+  );
+  assert.equal(
+    MediaSchema.safeParse({
+      type: "com.example.hologram",
+      url: "https://example.com/media/shoe.holo",
+      duration: -1,
+    }).success,
+    false
+  );
+
+  const variantPayload = {
+    id: "var_1",
+    title: "Holo Sneaker - Size 10",
+    description: { plain: "Sneaker with hologram media" },
+    price: { amount: 12000, currency: "USD" },
+    media: [
+      {
+        type: "image",
+        url: "https://example.com/media/sneaker.jpg",
+        width: 1000,
+        height: 1000,
+      },
+      customHologram,
+    ],
+  };
+  const parsedVariant = FulfillmentVariantSchema.safeParse(variantPayload);
+  assert.ok(parsedVariant.success, JSON.stringify(parsedVariant.error?.issues));
+  assert.equal(parsedVariant.data.media.length, 2);
+  assert.equal(parsedVariant.data.media[1]["com.example.fov_degrees"], 120);
+
+  const productPayload = {
+    id: "prod_1",
+    title: "Holo Sneaker",
+    description: { plain: "Flagship sneaker" },
+    price_range: {
+      min: { amount: 12000, currency: "USD" },
+      max: { amount: 12000, currency: "USD" },
+    },
+    media: [customHologram, audioMedia],
+    variants: [variantPayload],
+  };
+  const parsedProduct = ProductSchema.safeParse(productPayload);
+  assert.ok(parsedProduct.success, JSON.stringify(parsedProduct.error?.issues));
+  assert.deepEqual(parsedProduct.data.media[0], customHologram);
+  assert.deepEqual(parsedProduct.data.media[1], audioMedia);
+});
+
+test("CheckoutCompleteRequestSchema marks cart_id as @deprecated while keeping runtime validation optional string", () => {
+  assert.equal(
+    typeof CheckoutCompleteRequestSchema.shape.cart_id.description,
+    "string"
+  );
+  assert.ok(
+    CheckoutCompleteRequestSchema.shape.cart_id.description.startsWith(
+      "@deprecated"
+    )
+  );
+  assert.equal(
+    CheckoutCreateRequestSchema.shape.cart_id.description,
+    undefined
+  );
+  assert.equal(CheckoutSchema.shape.cart_id.description, undefined);
+
+  const omittedCartId = CheckoutCompleteRequestSchema.safeParse({
+    payment: { instruments: [] },
+  });
+  assert.ok(omittedCartId.success);
+
+  const stringCartId = CheckoutCompleteRequestSchema.safeParse({
+    payment: { instruments: [] },
+    cart_id: "cart_legacy_123",
+  });
+  assert.ok(stringCartId.success);
+  assert.equal(stringCartId.data.cart_id, "cart_legacy_123");
+
+  const numericCartId = CheckoutCompleteRequestSchema.safeParse({
+    payment: { instruments: [] },
+    cart_id: 123,
+  });
+  assert.equal(numericCartId.success, false);
+});
+
+test("CheckoutCreateRequestSchema enforces line_items and quantity >= 1 while preserving third-party extension fields", () => {
+  const validCreate = {
+    line_items: [
+      {
+        item: { id: "sku_100" },
+        quantity: 2,
+        "com.example.gift_wrap": true,
+      },
+    ],
+    cart_id: "cart_abc",
+    "com.example.channel": "mobile_app",
+  };
+  const parsed = CheckoutCreateRequestSchema.safeParse(validCreate);
+  assert.ok(parsed.success, JSON.stringify(parsed.error?.issues));
+  assert.equal(parsed.data.cart_id, "cart_abc");
+  assert.equal(parsed.data["com.example.channel"], "mobile_app");
+  assert.equal(parsed.data.line_items[0]["com.example.gift_wrap"], true);
+
+  assert.equal(
+    CheckoutCreateRequestSchema.safeParse({
+      cart_id: "cart_missing_items",
+    }).success,
+    false
+  );
+  assert.equal(
+    CheckoutCreateRequestSchema.safeParse({
+      line_items: [{ item: { id: "sku_100" }, quantity: 0 }],
+    }).success,
+    false
+  );
+  assert.equal(
+    CheckoutCreateRequestSchema.safeParse({
+      line_items: [{ item: {}, quantity: 1 }],
+    }).success,
+    false
+  );
 });

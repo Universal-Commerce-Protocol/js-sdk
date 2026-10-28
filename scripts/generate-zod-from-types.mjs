@@ -15,6 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { jsonSchemaToZod } from "json-schema-to-zod";
+import ts from "typescript";
 
 const [typesJsonArg, targetTsArg] = process.argv.slice(2);
 if (!typesJsonArg || !targetTsArg) {
@@ -189,6 +190,91 @@ function topologicalSort(defs) {
   return ordered;
 }
 
+function formatDeprecationMessage(schemaNode) {
+  const raw =
+    schemaNode?.["x-ucp-schema-transition"]?.description ||
+    schemaNode?.description ||
+    "Deprecated.";
+  const cleaned = String(raw)
+    .replace(/\*\//g, "*\\/")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned.replace(/^deprecated:\s*/i, "") || "Deprecated.";
+}
+
+function annotateDeprecatedObjectProperties(expr, schema) {
+  if (!schema?.properties || typeof schema.properties !== "object") {
+    return expr;
+  }
+  const deprecatedProps = new Map();
+  for (const [propName, propSchema] of Object.entries(schema.properties)) {
+    if (propSchema?.deprecated === true) {
+      deprecatedProps.set(propName, formatDeprecationMessage(propSchema));
+    }
+  }
+  if (deprecatedProps.size === 0) {
+    return expr;
+  }
+  const sf = ts.createSourceFile(
+    "__expr.ts",
+    expr,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+  const stmt = sf.statements[0];
+  if (!stmt || !ts.isExpressionStatement(stmt)) {
+    return expr;
+  }
+  let cur = stmt.expression;
+  while (
+    ts.isCallExpression(cur) &&
+    ts.isPropertyAccessExpression(cur.expression) &&
+    !(
+      ts.isIdentifier(cur.expression.expression) &&
+      cur.expression.expression.text === "z" &&
+      cur.expression.name.text === "object"
+    )
+  ) {
+    cur = cur.expression.expression;
+  }
+  if (
+    !ts.isCallExpression(cur) ||
+    !cur.arguments.length ||
+    !ts.isObjectLiteralExpression(cur.arguments[0])
+  ) {
+    return expr;
+  }
+  const edits = [];
+  for (const prop of cur.arguments[0].properties) {
+    if (!ts.isPropertyAssignment(prop)) {
+      continue;
+    }
+    const propName =
+      ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)
+        ? prop.name.text
+        : null;
+    if (!propName || !deprecatedProps.has(propName)) {
+      continue;
+    }
+    const msg = deprecatedProps.get(propName);
+    edits.push({
+      pos: prop.getStart(sf),
+      text: `\n/** @deprecated ${msg} */\n`,
+    });
+    edits.push({
+      pos: prop.initializer.getEnd(),
+      text: `.describe(${JSON.stringify(`@deprecated ${msg}`)})`,
+    });
+  }
+  edits.sort((a, b) => b.pos - a.pos);
+  let updated = expr;
+  for (const edit of edits) {
+    updated = `${updated.slice(0, edit.pos)}${edit.text}${updated.slice(edit.pos)}`;
+  }
+  return updated;
+}
+
 function renderDefinitionExpr(defName, schema) {
   const options = {
     withoutDefaults: true,
@@ -239,7 +325,10 @@ function renderDefinitionExpr(defName, schema) {
     },
   };
 
-  return jsonSchemaToZod(schema, options);
+  return annotateDeprecatedObjectProperties(
+    jsonSchemaToZod(schema, options),
+    schema
+  );
 }
 
 const rawDoc = JSON.parse(fs.readFileSync(typesJsonPath, "utf8"));
@@ -289,11 +378,21 @@ for (const defName of sortedNames) {
   const typeIdent = toTypeIdentifier(defName);
   const expr = renderDefinitionExpr(defName, schema);
   const isRecursive = expr.includes(`z.lazy(() => ${schemaIdent})`);
+  const topDeprecationComment =
+    schema?.deprecated === true
+      ? `/** @deprecated ${formatDeprecationMessage(schema)} */`
+      : null;
 
+  if (topDeprecationComment) {
+    lines.push(topDeprecationComment);
+  }
   if (isRecursive) {
     lines.push(`export const ${schemaIdent}: z.ZodType<any> = ${expr};`);
   } else {
     lines.push(`export const ${schemaIdent} = ${expr};`);
+  }
+  if (topDeprecationComment) {
+    lines.push(topDeprecationComment);
   }
   lines.push(`export type ${typeIdent} = z.infer<typeof ${schemaIdent}>;`);
   lines.push("");
