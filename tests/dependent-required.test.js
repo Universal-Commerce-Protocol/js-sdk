@@ -40,11 +40,13 @@ const SCRIPT = path.join(
 
 const {
   TimeIntervalSchema,
-  ExceptionHourElementSchema,
-  DailyHourElementSchema,
-  FulfillmentMethodCreateRequestSchema,
+  ExceptionHourSchema,
+  DailyHourSchema,
+  FulfillmentMethodCreateRequestBaseSchema,
+  ShippingMethodCreateRequestSchema,
   FulfillmentMethodUpdateRequestSchema,
-  FulfillmentMethodResponseSchema,
+  FulfillmentMethodBaseSchema,
+  ShippingMethodSchema,
 } = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -224,29 +226,27 @@ test("TimeIntervalSchema requires opens and closes together (dependentRequired)"
   assert.ok(rejects(TimeIntervalSchema, { closes: "17:00" }));
 });
 
-test("ExceptionHourElementSchema inherits the pair rule through allOf: a closure carries neither, an interval both", () => {
+test("ExceptionHourSchema inherits the pair rule through allOf: a closure carries neither, an interval both", () => {
   const closure = { valid_from: "2026-11-26", valid_through: "2026-11-26" };
-  assert.ok(accepts(ExceptionHourElementSchema, closure));
+  assert.ok(accepts(ExceptionHourSchema, closure));
   assert.ok(
-    accepts(ExceptionHourElementSchema, {
+    accepts(ExceptionHourSchema, {
       ...closure,
       opens: "10:00",
       closes: "14:00",
     })
   );
-  assert.ok(
-    rejects(ExceptionHourElementSchema, { ...closure, opens: "10:00" })
-  );
+  assert.ok(rejects(ExceptionHourSchema, { ...closure, opens: "10:00" }));
 });
 
-test("DailyHourElementSchema keeps the pair rule: the generated object carries opens and closes as optional", () => {
+test("DailyHourSchema keeps the pair rule: the generated object carries opens and closes as optional", () => {
   // daily_hour.json lists day, opens and closes as required, but quicktype
   // emits all three optional (a separate, pre-existing loss), so on the
   // generated object the rule is live, not vacuous: judged on the schema's
   // `required` it would have been dropped and `{ day, opens }` kept passing.
-  assert.ok(rejects(DailyHourElementSchema, { day: "monday", opens: "09:00" }));
+  assert.ok(rejects(DailyHourSchema, { day: "monday", opens: "09:00" }));
   assert.ok(
-    accepts(DailyHourElementSchema, {
+    accepts(DailyHourSchema, {
       day: "monday",
       opens: "09:00",
       closes: "17:00",
@@ -254,15 +254,18 @@ test("DailyHourElementSchema keeps the pair rule: the generated object carries o
   );
 });
 
-test("FulfillmentMethodCreateRequestSchema and FulfillmentMethodResponseSchema stay plain z.object: type is required there, so destinations needs type is vacuous", () => {
-  assert.ok(
-    FulfillmentMethodCreateRequestSchema.shape,
-    "FulfillmentMethodCreateRequestSchema lost .shape: wrapped for a rule that cannot change a verdict"
-  );
-  assert.ok(
-    FulfillmentMethodResponseSchema.shape,
-    "FulfillmentMethodResponseSchema lost .shape: wrapped for a rule that cannot change a verdict"
-  );
+test("FulfillmentMethod create and response object variants stay plain z.object: type is required there, so destinations needs type is vacuous", () => {
+  for (const schema of [
+    FulfillmentMethodCreateRequestBaseSchema,
+    ShippingMethodCreateRequestSchema,
+    FulfillmentMethodBaseSchema,
+    ShippingMethodSchema,
+  ]) {
+    assert.ok(
+      schema.shape,
+      "object schema lost .shape: wrapped for a rule that cannot change a verdict"
+    );
+  }
 });
 
 test("FulfillmentMethodUpdateRequestSchema enforces dependentRequired: destinations requires type", () => {

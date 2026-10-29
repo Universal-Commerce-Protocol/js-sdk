@@ -199,3 +199,60 @@ test("the variant-union required rules apply once and are idempotent", () => {
     "a second pass must not re-apply the variant rules"
   );
 });
+
+test("the constraint injector preserves @deprecated JSDoc and .describe() metadata and is idempotent", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ucp-injector-depr-"));
+  const schemaDir = path.join(dir, "schemas");
+  fs.mkdirSync(schemaDir);
+  fs.writeFileSync(
+    path.join(schemaDir, "checkout_complete.json"),
+    JSON.stringify({
+      $id: "https://ucp.dev/schemas/checkout_complete.json",
+      title: "Checkout Complete",
+      type: "object",
+      properties: {
+        cart_id: {
+          type: "string",
+          minLength: 1,
+          deprecated: true,
+        },
+        continue_url: {
+          type: "string",
+          format: "uri",
+          deprecated: true,
+        },
+      },
+    })
+  );
+
+  const target = path.join(dir, "spec_generated.ts");
+  fs.writeFileSync(
+    target,
+    'import * as z from "zod";\n' +
+      "\n" +
+      "export const CheckoutCompleteSchema = z.object({\n" +
+      "  /** @deprecated Omit on complete. */\n" +
+      '  cart_id: z.string().optional().describe("@deprecated Omit on complete."),\n' +
+      "  /** @deprecated Legacy URL. */\n" +
+      '  continue_url: z.string().optional().describe("@deprecated Legacy URL."),\n' +
+      "});\n"
+  );
+
+  execFileSync("node", [SCRIPT, schemaDir, target], { stdio: "pipe" });
+  const afterFirst = fs.readFileSync(target, "utf8");
+  assert.match(
+    afterFirst,
+    /cart_id: z\.string\(\)\.min\(1\)\.optional\(\)\.describe\("@deprecated Omit on complete\."\)/
+  );
+  assert.match(
+    afterFirst,
+    /continue_url: z\.string\(\)\.url\(\)\.optional\(\)\.describe\("@deprecated Legacy URL\."\)/
+  );
+
+  execFileSync("node", [SCRIPT, schemaDir, target], { stdio: "pipe" });
+  assert.equal(
+    fs.readFileSync(target, "utf8"),
+    afterFirst,
+    "a second pass must leave deprecated constrained fields unchanged"
+  );
+});

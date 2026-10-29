@@ -1,9 +1,0 @@
-{
-  "note": "Capability source fragments the generator deliberately does not generate. A fragment whose isolated generation fails, or yields no declarations, must be listed here with a reason: scripts/discover-capability-srcs.mjs fails the build otherwise. Entries are re-validated on every run -- an exclusion whose fragment generates again, or that no longer exists in the spec, is an error, so this list cannot rot into a permanent hole.",
-  "exclusions": [
-    {
-      "src": "common/payment_authentication.json#/$defs/dev.ucp.shopping.checkout",
-      "reason": "quicktype 26.x aborts with `Internal error: We have additional properties but want to make a class` on this allOf composition (a $ref to checkout plus an inline actions branch), both in isolation and in the shared invocation. The capability-owned inline payload generates both authentication Action families completely, so excluding only the composition loses no payment-authentication model."
-    }
-  ]
-}
