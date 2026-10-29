@@ -35,7 +35,8 @@ Each version of the JavaScript SDK is generated against a specific version of th
 
 | SDK Version | UCP Schema Version |
 | ----------- | ------------------ |
-| **`0.5.x`** | **`2026-08-25`**   |
+| **`0.6.x`** | **`2026-08-25`**   |
+| `0.5.x`     | `2026-08-25`       |
 | `0.4.x`     | `2026-04-08`       |
 | `0.1.1`     | `2026-01-23`       |
 | `0.1.0`     | `2026-01-11`       |
@@ -92,7 +93,7 @@ This project uses `npm` for package management, `typescript` for building, and t
 The models are automatically generated from the JSON schemas in the
 [UCP Specification](https://ucp.dev).
 
-To regenerate the models against a specific release version:
+Model generation via `ucp-schema generate-types` supports UCP release `2026-08-25` and later. To regenerate the models against a specific release version:
 
 ```bash
 npm run generate -- 2026-08-25

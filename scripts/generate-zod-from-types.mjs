@@ -275,7 +275,7 @@ function annotateDeprecatedObjectProperties(expr, schema) {
   return updated;
 }
 
-function renderDefinitionExpr(defName, schema) {
+function renderDefinitionExpr(defName, schema, emitted) {
   const options = {
     withoutDefaults: true,
     withoutDescribes: true,
@@ -287,7 +287,7 @@ function renderDefinitionExpr(defName, schema) {
       ) {
         const refName = subSchema.$ref.slice("#/$defs/".length);
         const refSchemaIdent = toSchemaIdentifier(refName);
-        if (refName === defName) {
+        if (!emitted.has(refName)) {
           return `z.lazy(() => ${refSchemaIdent})`;
         }
         return refSchemaIdent;
@@ -372,12 +372,14 @@ const lines = [
   "",
 ];
 
+const emitted = new Set();
 for (const defName of sortedNames) {
   const schema = defs[defName];
   const schemaIdent = toSchemaIdentifier(defName);
   const typeIdent = toTypeIdentifier(defName);
-  const expr = renderDefinitionExpr(defName, schema);
-  const isRecursive = expr.includes(`z.lazy(() => ${schemaIdent})`);
+  const expr = renderDefinitionExpr(defName, schema, emitted);
+  emitted.add(defName);
+  const isRecursive = expr.includes("z.lazy(() =>");
   const topDeprecationComment =
     schema?.deprecated === true
       ? `/** @deprecated ${formatDeprecationMessage(schema)} */`

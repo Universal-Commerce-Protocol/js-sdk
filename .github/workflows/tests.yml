@@ -48,8 +48,8 @@ jobs:
         run: npm test
 
   # Job 2: assert the committed models equal a fresh regeneration from the
-  # pinned UCP spec release the 0.5.x line targets (README compatibility table:
-  # 0.5.x -> 2026-08-25). Catches both a broken generation pipeline (an injector
+  # pinned UCP spec release the 0.6.x line targets (README compatibility table:
+  # 0.6.x -> 2026-08-25). Catches both a broken generation pipeline (an injector
   # regressed but the committed models were not updated) and a forgotten
   # regeneration (committed models stale versus the pinned spec). Does not
   # auto-commit: the committed-artifact flow stays the release path (the
