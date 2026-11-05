@@ -59,36 +59,23 @@ export type A2aMessageRequestParams = z.infer<
 export const IdSchema = z.union([z.string(), z.number(), z.null()]);
 export type Id = z.infer<typeof IdSchema>;
 
-export const JsonrpcRequestSchema = z
+export const A2aMessageRequestSchema = z
   .object({
     jsonrpc: z.literal("2.0"),
     id: IdSchema.optional(),
-    method: z.string().min(1),
-    params: z.union([z.record(z.any()), z.array(z.any())]).optional(),
-  })
-  .strict();
-export type JsonrpcRequest = z.infer<typeof JsonrpcRequestSchema>;
-
-export const A2aMessageRequestSchema = z
-  .object({
-    method: z.literal("message/send").optional(),
+    method: z.literal("message/send"),
     params: A2aMessageRequestParamsSchema,
   })
-  .catchall(z.any())
-  .and(JsonrpcRequestSchema);
+  .catchall(z.any());
 export type A2aMessageRequest = z.infer<typeof A2aMessageRequestSchema>;
 
-export const JsonrpcSuccessResponseSchema = z
-  .object({ jsonrpc: z.literal("2.0"), id: IdSchema, result: z.any() })
-  .strict();
-export type JsonrpcSuccessResponse = z.infer<
-  typeof JsonrpcSuccessResponseSchema
->;
-
 export const A2aMessageResponseSchema = z
-  .object({ result: A2aMessageMessageSchema.optional() })
-  .catchall(z.any())
-  .and(JsonrpcSuccessResponseSchema);
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: IdSchema,
+    result: A2aMessageMessageSchema,
+  })
+  .catchall(z.any());
 export type A2aMessageResponse = z.infer<typeof A2aMessageResponseSchema>;
 
 export const ExtensionSchema = z
@@ -198,85 +185,7 @@ export const TotalSchema = z
     display_text: z.string().optional(),
     amount: SignedAmountSchema,
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    for (const rule of [
-      {
-        kind: "numeric",
-        discriminator: "type",
-        values: ["discount", "items_discount"],
-        negated: false,
-        required: [],
-        field: null,
-        format: null,
-        target: "amount",
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: 0,
-      },
-      {
-        kind: "numeric",
-        discriminator: "type",
-        values: ["subtotal", "fulfillment", "tax", "fee"],
-        negated: false,
-        required: [],
-        field: null,
-        format: null,
-        target: "amount",
-        minimum: 0,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-    ]) {
-      const record = value as Record<string, unknown>;
-      const discriminatorVal = record[rule.discriminator];
-      if (discriminatorVal === undefined) continue;
-      const matches = (rule.values as readonly unknown[]).includes(
-        discriminatorVal
-      );
-      if (rule.negated ? matches : !matches) continue;
-      if (rule.kind === "required") {
-        for (const field of rule.required) {
-          if (!(field in record))
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Field is required by a conditional constraint",
-            });
-        }
-        continue;
-      }
-      if (rule.kind === "format") {
-        const field = rule.field;
-        const fieldValue = field === null ? undefined : record[field];
-        if (rule.format === "uri" && typeof fieldValue === "string") {
-          if (!z.string().url().safeParse(fieldValue).success && field !== null)
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Value must be a valid URI",
-            });
-        }
-        continue;
-      }
-      if (rule.target === null) continue;
-      const target = record[rule.target];
-      if (typeof target !== "number") continue;
-      const invalid =
-        (rule.minimum !== null && target < rule.minimum) ||
-        (rule.maximum !== null && target > rule.maximum) ||
-        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
-        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
-      if (invalid)
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [rule.target],
-          message: "Value violates a conditional numeric constraint",
-        });
-    }
-  });
+  .catchall(z.any());
 export type Total = z.infer<typeof TotalSchema>;
 
 export const AdjustmentSchema = z
@@ -376,13 +285,160 @@ export const ArgumentsSchema = z
   .catchall(z.any());
 export type Arguments = z.infer<typeof ArgumentsSchema>;
 
-export const AttributionSchema = z.record(z.string());
-export type Attribution = z.infer<typeof AttributionSchema>;
-
-export const AvailabilitySchema = z
-  .object({ available: z.boolean().optional(), status: z.string().optional() })
+export const ContextPaymentSchema = z
+  .object({
+    handler: ReverseDomainNameSchema,
+    types: z.array(z.string()).optional(),
+  })
   .catchall(z.any());
-export type Availability = z.infer<typeof AvailabilitySchema>;
+export type ContextPayment = z.infer<typeof ContextPaymentSchema>;
+
+export const ContextSchema = z
+  .object({
+    address_country: z.string().optional(),
+    address_region: z.string().optional(),
+    postal_code: z.string().optional(),
+    location: z.string().optional(),
+    intent: z.string().optional(),
+    language: z.string().optional(),
+    currency: z.string().optional(),
+    eligibility: z
+      .array(ReverseDomainNameSchema)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    payment: z.array(ContextPaymentSchema).optional(),
+  })
+  .catchall(z.any());
+export type Context = z.infer<typeof ContextSchema>;
+
+export const ConversationSchema = z
+  .object({
+    id: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .catchall(z.any());
+export type Conversation = z.infer<typeof ConversationSchema>;
+
+export const SignalsSchema = z
+  .object({
+    "dev.ucp.buyer_ip": z.string().optional(),
+    "dev.ucp.user_agent": z.string().optional(),
+  })
+  .catchall(z.any());
+export type Signals = z.infer<typeof SignalsSchema>;
+
+export const AskRequestSchema = z
+  .object({
+    query: z.string(),
+    conversation: ConversationSchema.optional(),
+    ids: z.array(z.string()).optional(),
+    context: ContextSchema.optional(),
+    signals: SignalsSchema.optional(),
+  })
+  .catchall(z.any());
+export type AskRequest = z.infer<typeof AskRequestSchema>;
+
+export const AskResponseAnswerSchema = z
+  .object({
+    plain: z.string(),
+    html: z.string().optional(),
+    markdown: z.string().optional(),
+  })
+  .catchall(z.any());
+export type AskResponseAnswer = z.infer<typeof AskResponseAnswerSchema>;
+
+export const LinkSchema = z
+  .object({
+    type: z.string(),
+    url: z.string().url(),
+    title: z.string().optional(),
+    id: z.string().optional(),
+  })
+  .catchall(z.any());
+export type Link = z.infer<typeof LinkSchema>;
+
+export const ErrorCodeSchema = z.string();
+export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
+
+export const MessageErrorSchema = z
+  .object({
+    type: z.literal("error"),
+    code: ErrorCodeSchema,
+    path: z.string().optional(),
+    content_type: z.enum(["plain", "markdown"]).optional(),
+    content: z.string(),
+    severity: z.enum([
+      "recoverable",
+      "requires_buyer_input",
+      "requires_buyer_review",
+      "unrecoverable",
+    ]),
+  })
+  .catchall(z.any());
+export type MessageError = z.infer<typeof MessageErrorSchema>;
+
+export const InfoCodeSchema = z.string();
+export type InfoCode = z.infer<typeof InfoCodeSchema>;
+
+export const MessageInfoSchema = z
+  .object({
+    type: z.literal("info"),
+    path: z.string().optional(),
+    code: InfoCodeSchema.optional(),
+    content_type: z.enum(["plain", "markdown"]).optional(),
+    content: z.string(),
+  })
+  .catchall(z.any());
+export type MessageInfo = z.infer<typeof MessageInfoSchema>;
+
+export const WarningCodeSchema = z.string();
+export type WarningCode = z.infer<typeof WarningCodeSchema>;
+
+export const MessageWarningSchema = z
+  .object({
+    type: z.literal("warning"),
+    path: z.string().optional(),
+    code: WarningCodeSchema,
+    content: z.string(),
+    content_type: z.enum(["plain", "markdown"]).optional(),
+    presentation: z.string().optional(),
+    image_url: z.string().url().optional(),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type MessageWarning = z.infer<typeof MessageWarningSchema>;
+
+export const MessageSchema = z.union([
+  MessageErrorSchema,
+  MessageWarningSchema,
+  MessageInfoSchema,
+]);
+export type Message = z.infer<typeof MessageSchema>;
+
+export const VersionSchema = z
+  .string()
+  .regex(new RegExp("^\\d{4}-\\d{2}-\\d{2}$"));
+export type Version = z.infer<typeof VersionSchema>;
+
+export const CapabilityResponseSchema = z
+  .object({
+    version: VersionSchema,
+    spec: z.string().url().optional(),
+    schema: z.string().url().optional(),
+    id: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    extends: z
+      .union([ReverseDomainNameSchema, z.array(ReverseDomainNameSchema).min(1)])
+      .optional(),
+  })
+  .catchall(z.any());
+export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
+
+export const MapOrderSchema = z.record(z.array(z.string()));
+export type MapOrder = z.infer<typeof MapOrderSchema>;
 
 export const ValueConstraintConstSchema = z
   .object({
@@ -390,10 +446,8 @@ export const ValueConstraintConstSchema = z
       .array(z.any())
       .min(1)
       .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
       )
       .optional(),
     const: z.any(),
@@ -407,10 +461,8 @@ export const ValueConstraintEnumSchema = z
       .array(z.any())
       .min(1)
       .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
       ),
     const: z.any().optional(),
   })
@@ -429,10 +481,8 @@ export const ConstraintExpressionSchema: z.ZodType<any> = z
       .array(z.string())
       .min(1)
       .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
       )
       .optional(),
     properties: z
@@ -442,9 +492,6 @@ export const ConstraintExpressionSchema: z.ZodType<any> = z
           ValueConstraintSchema,
         ])
       )
-      .refine((value) => Object.keys(value).length >= 1, {
-        message: "Object must contain at least 1 property(ies) (minProperties)",
-      })
       .optional(),
     anyOf: z
       .array(z.lazy(() => ConstraintExpressionSchema))
@@ -463,6 +510,71 @@ export const AvailablePaymentInstrumentSchema = z
 export type AvailablePaymentInstrument = z.infer<
   typeof AvailablePaymentInstrumentSchema
 >;
+
+export const PaymentHandlerBaseSchema = z
+  .object({
+    version: VersionSchema,
+    spec: z.string().url().optional(),
+    schema: z.string().url().optional(),
+    id: z.string(),
+    config: z.record(z.any()).optional(),
+    available_instruments: z
+      .array(AvailablePaymentInstrumentSchema)
+      .min(1)
+      .optional(),
+  })
+  .catchall(z.any());
+export type PaymentHandlerBase = z.infer<typeof PaymentHandlerBaseSchema>;
+
+export const ServiceBaseSchema = z
+  .object({
+    version: VersionSchema,
+    spec: z.string().url().optional(),
+    schema: z.string().url().optional(),
+    id: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    transport: z.enum(["rest", "mcp", "a2a", "embedded"]),
+    endpoint: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type ServiceBase = z.infer<typeof ServiceBaseSchema>;
+
+export const ResponseAskSchema = z
+  .object({
+    version: VersionSchema,
+    map_order: MapOrderSchema.optional(),
+    status: z.enum(["success", "error"]).optional(),
+    services: z
+      .record(ReverseDomainNameSchema, z.array(ServiceBaseSchema))
+      .optional(),
+    capabilities: z
+      .record(ReverseDomainNameSchema, z.array(CapabilityResponseSchema))
+      .optional(),
+    payment_handlers: z
+      .record(ReverseDomainNameSchema, z.array(PaymentHandlerBaseSchema))
+      .optional(),
+  })
+  .catchall(z.any());
+export type ResponseAsk = z.infer<typeof ResponseAskSchema>;
+
+export const AskResponseSchema = z
+  .object({
+    ucp: ResponseAskSchema,
+    answer: AskResponseAnswerSchema,
+    conversation: ConversationSchema.optional(),
+    links: z.array(LinkSchema).optional(),
+    messages: z.array(MessageSchema).optional(),
+  })
+  .catchall(z.any());
+export type AskResponse = z.infer<typeof AskResponseSchema>;
+
+export const AttributionSchema = z.record(z.string());
+export type Attribution = z.infer<typeof AttributionSchema>;
+
+export const AvailabilitySchema = z
+  .object({ available: z.boolean().optional(), status: z.string().optional() })
+  .catchall(z.any());
+export type Availability = z.infer<typeof AvailabilitySchema>;
 
 export const BindingSchema = z
   .object({ type: ReverseDomainNameSchema, id: z.string().min(1) })
@@ -506,15 +618,6 @@ export type BusinessSplitPaymentsConfig = z.infer<
   typeof BusinessSplitPaymentsConfigSchema
 >;
 
-export const LinkSchema = z
-  .object({
-    type: z.string(),
-    url: z.string().url(),
-    title: z.string().optional(),
-  })
-  .catchall(z.any());
-export type Link = z.infer<typeof LinkSchema>;
-
 export const ConsentSegmentSchema = z
   .object({
     granted: z.boolean(),
@@ -554,11 +657,6 @@ export const BuyerSchema = z
   })
   .catchall(z.any());
 export type Buyer = z.infer<typeof BuyerSchema>;
-
-export const VersionSchema = z
-  .string()
-  .regex(new RegExp("^\\d{4}-\\d{2}-\\d{2}$"));
-export type Version = z.infer<typeof VersionSchema>;
 
 export const CapabilityBaseSchema = z
   .object({
@@ -601,20 +699,6 @@ export const CapabilityPlatformSchema = z
   })
   .catchall(z.any());
 export type CapabilityPlatform = z.infer<typeof CapabilityPlatformSchema>;
-
-export const CapabilityResponseSchema = z
-  .object({
-    version: VersionSchema,
-    spec: z.string().url().optional(),
-    schema: z.string().url().optional(),
-    id: z.string().optional(),
-    config: z.record(z.any()).optional(),
-    extends: z
-      .union([ReverseDomainNameSchema, z.array(ReverseDomainNameSchema).min(1)])
-      .optional(),
-  })
-  .catchall(z.any());
-export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
 
 /** @deprecated use PAN Credential (`pan_credential.json`) or Network Token Credential (`network_token_credential.json`). A card credential containing sensitive payment card details including raw Primary Account Numbers (PANs). This credential type MUST NOT be used for checkout, only with payment handlers that tokenize or encrypt credentials. CRITICAL: Both parties handling CardCredential (sender and receiver) MUST be PCI DSS compliant. Transmission MUST use HTTPS/TLS with strong cipher suites. */
 export const CardCredentialSchema = z
@@ -680,37 +764,6 @@ export const CardPaymentInstrumentSchema = z
   })
   .catchall(z.any());
 export type CardPaymentInstrument = z.infer<typeof CardPaymentInstrumentSchema>;
-
-export const ContextPaymentSchema = z
-  .object({
-    handler: ReverseDomainNameSchema,
-    types: z.array(z.string()).optional(),
-  })
-  .catchall(z.any());
-export type ContextPayment = z.infer<typeof ContextPaymentSchema>;
-
-export const ContextSchema = z
-  .object({
-    address_country: z.string().optional(),
-    address_region: z.string().optional(),
-    postal_code: z.string().optional(),
-    location: z.string().optional(),
-    intent: z.string().optional(),
-    language: z.string().optional(),
-    currency: z.string().optional(),
-    eligibility: z
-      .array(ReverseDomainNameSchema)
-      .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
-      )
-      .optional(),
-    payment: z.array(ContextPaymentSchema).optional(),
-  })
-  .catchall(z.any());
-export type Context = z.infer<typeof ContextSchema>;
 
 export const DiscountsObjectSchema = z
   .object({
@@ -853,74 +906,13 @@ export const LoyaltySchema = z.record(
 );
 export type Loyalty = z.infer<typeof LoyaltySchema>;
 
-export const ErrorCodeSchema = z.string();
-export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
-
-export const MessageErrorSchema = z
-  .object({
-    type: z.literal("error"),
-    code: ErrorCodeSchema,
-    path: z.string().optional(),
-    content_type: z.enum(["plain", "markdown"]).optional(),
-    content: z.string(),
-    severity: z.enum([
-      "recoverable",
-      "requires_buyer_input",
-      "requires_buyer_review",
-      "unrecoverable",
-    ]),
-  })
-  .catchall(z.any());
-export type MessageError = z.infer<typeof MessageErrorSchema>;
-
-export const InfoCodeSchema = z.string();
-export type InfoCode = z.infer<typeof InfoCodeSchema>;
-
-export const MessageInfoSchema = z
-  .object({
-    type: z.literal("info"),
-    path: z.string().optional(),
-    code: InfoCodeSchema.optional(),
-    content_type: z.enum(["plain", "markdown"]).optional(),
-    content: z.string(),
-  })
-  .catchall(z.any());
-export type MessageInfo = z.infer<typeof MessageInfoSchema>;
-
-export const WarningCodeSchema = z.string();
-export type WarningCode = z.infer<typeof WarningCodeSchema>;
-
-export const MessageWarningSchema = z
-  .object({
-    type: z.literal("warning"),
-    path: z.string().optional(),
-    code: WarningCodeSchema,
-    content: z.string(),
-    content_type: z.enum(["plain", "markdown"]).optional(),
-    presentation: z.string().optional(),
-    image_url: z.string().url().optional(),
-    url: z.string().url().optional(),
-  })
-  .catchall(z.any());
-export type MessageWarning = z.infer<typeof MessageWarningSchema>;
-
-export const MessageSchema = z.union([
-  MessageErrorSchema,
-  MessageWarningSchema,
-  MessageInfoSchema,
-]);
-export type Message = z.infer<typeof MessageSchema>;
-
 export const DescriptionSchema = z
   .object({
     plain: z.string().optional(),
     html: z.string().optional(),
     markdown: z.string().optional(),
   })
-  .catchall(z.any())
-  .refine((value) => Object.keys(value).length >= 1, {
-    message: "Object must contain at least 1 property(ies) (minProperties)",
-  });
+  .catchall(z.any());
 export type Description = z.infer<typeof DescriptionSchema>;
 
 export const PolicySchema = z
@@ -932,37 +924,6 @@ export const PolicySchema = z
   })
   .catchall(z.any());
 export type Policy = z.infer<typeof PolicySchema>;
-
-export const MapOrderSchema = z.record(z.array(z.string()));
-export type MapOrder = z.infer<typeof MapOrderSchema>;
-
-export const PaymentHandlerBaseSchema = z
-  .object({
-    version: VersionSchema,
-    spec: z.string().url().optional(),
-    schema: z.string().url().optional(),
-    id: z.string(),
-    config: z.record(z.any()).optional(),
-    available_instruments: z
-      .array(AvailablePaymentInstrumentSchema)
-      .min(1)
-      .optional(),
-  })
-  .catchall(z.any());
-export type PaymentHandlerBase = z.infer<typeof PaymentHandlerBaseSchema>;
-
-export const ServiceBaseSchema = z
-  .object({
-    version: VersionSchema,
-    spec: z.string().url().optional(),
-    schema: z.string().url().optional(),
-    id: z.string().optional(),
-    config: z.record(z.any()).optional(),
-    transport: z.enum(["rest", "mcp", "a2a", "embedded"]),
-    endpoint: z.string().url().optional(),
-  })
-  .catchall(z.any());
-export type ServiceBase = z.infer<typeof ServiceBaseSchema>;
 
 export const ResponseCartSchema = z
   .object({
@@ -982,29 +943,6 @@ export const ResponseCartSchema = z
   .catchall(z.any());
 export type ResponseCart = z.infer<typeof ResponseCartSchema>;
 
-export const SignalsSchema = z
-  .object({
-    "dev.ucp.buyer_ip": z.string().optional(),
-    "dev.ucp.user_agent": z.string().optional(),
-  })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    for (const key of Object.keys(value)) {
-      if (
-        !/^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$/.test(
-          key
-        )
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [key],
-          message: `Property name ${JSON.stringify(key)} does not match the required pattern (propertyNames)`,
-        });
-      }
-    }
-  });
-export type Signals = z.infer<typeof SignalsSchema>;
-
 export const TotalsItemLineSchema = z
   .object({ display_text: z.string(), amount: SignedAmountSchema })
   .catchall(z.any());
@@ -1017,135 +955,10 @@ export const TotalsItemSchema = z
     amount: SignedAmountSchema,
     lines: z.array(TotalsItemLineSchema).optional(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    for (const rule of [
-      {
-        kind: "numeric",
-        discriminator: "type",
-        values: ["discount", "items_discount"],
-        negated: false,
-        required: [],
-        field: null,
-        format: null,
-        target: "amount",
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: 0,
-      },
-      {
-        kind: "numeric",
-        discriminator: "type",
-        values: ["subtotal", "fulfillment", "tax", "fee"],
-        negated: false,
-        required: [],
-        field: null,
-        format: null,
-        target: "amount",
-        minimum: 0,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-      {
-        kind: "required",
-        discriminator: "type",
-        values: [
-          "subtotal",
-          "items_discount",
-          "discount",
-          "fulfillment",
-          "tax",
-          "fee",
-          "total",
-        ],
-        negated: true,
-        required: ["display_text"],
-        field: null,
-        format: null,
-        target: null,
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-    ]) {
-      const record = value as Record<string, unknown>;
-      const discriminatorVal = record[rule.discriminator];
-      if (discriminatorVal === undefined) continue;
-      const matches = (rule.values as readonly unknown[]).includes(
-        discriminatorVal
-      );
-      if (rule.negated ? matches : !matches) continue;
-      if (rule.kind === "required") {
-        for (const field of rule.required) {
-          if (!(field in record))
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Field is required by a conditional constraint",
-            });
-        }
-        continue;
-      }
-      if (rule.kind === "format") {
-        const field = rule.field;
-        const fieldValue = field === null ? undefined : record[field];
-        if (rule.format === "uri" && typeof fieldValue === "string") {
-          if (!z.string().url().safeParse(fieldValue).success && field !== null)
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Value must be a valid URI",
-            });
-        }
-        continue;
-      }
-      if (rule.target === null) continue;
-      const target = record[rule.target];
-      if (typeof target !== "number") continue;
-      const invalid =
-        (rule.minimum !== null && target < rule.minimum) ||
-        (rule.maximum !== null && target > rule.maximum) ||
-        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
-        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
-      if (invalid)
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [rule.target],
-          message: "Value violates a conditional numeric constraint",
-        });
-    }
-  });
+  .catchall(z.any());
 export type TotalsItem = z.infer<typeof TotalsItemSchema>;
 
-export const TotalsSchema = z
-  .array(TotalsItemSchema)
-  .superRefine((items, ctx) => {
-    for (const rule of [
-      { property: "type", value: "subtotal", min: 1, max: 1 },
-      { property: "type", value: "total", min: 1, max: 1 },
-    ]) {
-      const matches = items.filter(
-        (item) =>
-          item != null &&
-          (item as Record<string, unknown>)[rule.property] === rule.value
-      ).length;
-      if (rule.min !== undefined && matches < rule.min) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at least ${rule.min} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (minContains)`,
-        });
-      }
-      if (rule.max !== undefined && matches > rule.max) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `Array must contain at most ${rule.max} item(s) where ${rule.property} = ${JSON.stringify(rule.value)} (maxContains)`,
-        });
-      }
-    }
-  });
+export const TotalsSchema = z.array(TotalsItemSchema);
 export type Totals = z.infer<typeof TotalsSchema>;
 
 export const CartSchema = z
@@ -1375,19 +1188,7 @@ export type MediaSource = z.infer<typeof MediaSourceSchema>;
 
 export const MediaBaseSchema = z
   .object({
-    type: z.string().superRefine((value, ctx) => {
-      if (
-        (
-          ["external_video", "image", "model_3d", "video"] as readonly string[]
-        ).includes(value)
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid discriminator value",
-          fatal: true,
-        });
-      }
-    }),
+    type: z.string(),
     url: z.string().url(),
     name: z.string().optional(),
     alt_text: z.string().optional(),
@@ -1763,71 +1564,7 @@ export const PaginationResponseSchema = z
     has_next_page: z.boolean(),
     total_count: z.number().int().gte(0).optional(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    for (const rule of [
-      {
-        kind: "required",
-        discriminator: "has_next_page",
-        values: [true],
-        negated: false,
-        required: ["cursor"],
-        field: null,
-        format: null,
-        target: null,
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-    ]) {
-      const record = value as Record<string, unknown>;
-      const discriminatorVal = record[rule.discriminator];
-      if (discriminatorVal === undefined) continue;
-      const matches = (rule.values as readonly unknown[]).includes(
-        discriminatorVal
-      );
-      if (rule.negated ? matches : !matches) continue;
-      if (rule.kind === "required") {
-        for (const field of rule.required) {
-          if (!(field in record))
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Field is required by a conditional constraint",
-            });
-        }
-        continue;
-      }
-      if (rule.kind === "format") {
-        const field = rule.field;
-        const fieldValue = field === null ? undefined : record[field];
-        if (rule.format === "uri" && typeof fieldValue === "string") {
-          if (!z.string().url().safeParse(fieldValue).success && field !== null)
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Value must be a valid URI",
-            });
-        }
-        continue;
-      }
-      if (rule.target === null) continue;
-      const target = record[rule.target];
-      if (typeof target !== "number") continue;
-      const invalid =
-        (rule.minimum !== null && target < rule.minimum) ||
-        (rule.maximum !== null && target > rule.maximum) ||
-        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
-        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
-      if (invalid)
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [rule.target],
-          message: "Value violates a conditional numeric constraint",
-        });
-    }
-  });
+  .catchall(z.any());
 export type PaginationResponse = z.infer<typeof PaginationResponseSchema>;
 
 export const CatalogSearchResponseSchema = z
@@ -1856,22 +1593,7 @@ export type FulfillmentAvailableMethod = z.infer<
 >;
 
 export const FulfillmentDestinationBaseSchema = z
-  .object({
-    type: z.string().superRefine((value, ctx) => {
-      if (
-        (
-          ["business_location", "shipping_address"] as readonly string[]
-        ).includes(value)
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid discriminator value",
-          fatal: true,
-        });
-      }
-    }),
-    id: z.string(),
-  })
+  .object({ type: z.string(), id: z.string() })
   .catchall(z.any());
 export type FulfillmentDestinationBase = z.infer<
   typeof FulfillmentDestinationBaseSchema
@@ -1939,15 +1661,7 @@ export type FulfillmentGroup = z.infer<typeof FulfillmentGroupSchema>;
 export const FulfillmentMethodBaseSchema = z
   .object({
     id: z.string(),
-    type: z.string().superRefine((value, ctx) => {
-      if ((["pickup", "shipping"] as readonly string[]).includes(value)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid discriminator value",
-          fatal: true,
-        });
-      }
-    }),
+    type: z.string(),
     line_item_ids: z.array(z.string()),
     destinations: z.array(FulfillmentDestinationSchema).optional(),
     selected_destination_id: z.union([z.string(), z.null()]).optional(),
@@ -2239,15 +1953,7 @@ export type FulfillmentGroupCreateRequest = z.infer<
 
 export const FulfillmentMethodCreateRequestBaseSchema = z
   .object({
-    type: z.string().superRefine((value, ctx) => {
-      if ((["pickup", "shipping"] as readonly string[]).includes(value)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid discriminator value",
-          fatal: true,
-        });
-      }
-    }),
+    type: z.string(),
     selected_destination_id: z.union([z.string(), z.null()]).optional(),
     groups: z.array(FulfillmentGroupCreateRequestSchema).optional(),
   })
@@ -2347,40 +2053,12 @@ export type FulfillmentGroupUpdateRequest = z.infer<
 export const FulfillmentMethodUpdateRequestBaseSchema = z
   .object({
     id: z.string().optional(),
-    type: z
-      .string()
-      .superRefine((value, ctx) => {
-        if ((["pickup", "shipping"] as readonly string[]).includes(value)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message: "Invalid discriminator value",
-            fatal: true,
-          });
-        }
-      })
-      .optional(),
+    type: z.string().optional(),
     line_item_ids: z.array(z.string()),
     selected_destination_id: z.union([z.string(), z.null()]).optional(),
     groups: z.array(FulfillmentGroupUpdateRequestSchema).optional(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    const record = value as Record<string, unknown>;
-    for (const [subject, dependents] of [["destinations", ["type"]]] as [
-      string,
-      string[],
-    ][]) {
-      if (record[subject] === undefined) continue;
-      for (const field of dependents) {
-        if (record[field] === undefined)
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `Field is required when ${subject} is present (dependentRequired)`,
-          });
-      }
-    }
-  });
+  .catchall(z.any());
 export type FulfillmentMethodUpdateRequestBase = z.infer<
   typeof FulfillmentMethodUpdateRequestBaseSchema
 >;
@@ -2575,7 +2253,7 @@ export const JsonrpcErrorResponseSchema = z
     id: IdSchema,
     error: JsonrpcErrorSchema,
   })
-  .strict();
+  .catchall(z.any());
 export type JsonrpcErrorResponse = z.infer<typeof JsonrpcErrorResponseSchema>;
 
 export const EmbeddedErrorResponseSchema = JsonrpcErrorResponseSchema;
@@ -2589,17 +2267,24 @@ export const MethodSchema = z
 export type Method = z.infer<typeof MethodSchema>;
 
 export const EmbeddedMessageRequestSchema = z
-  .object({ method: MethodSchema.optional(), params: z.record(z.any()) })
-  .catchall(z.any())
-  .and(JsonrpcRequestSchema);
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: IdSchema.optional(),
+    method: MethodSchema,
+    params: z.record(z.any()),
+  })
+  .catchall(z.any());
 export type EmbeddedMessageRequest = z.infer<
   typeof EmbeddedMessageRequestSchema
 >;
 
 export const EmbeddedMessageResponseSchema = z
-  .object({ result: z.record(z.any()).optional() })
-  .catchall(z.any())
-  .and(JsonrpcSuccessResponseSchema);
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: IdSchema,
+    result: z.record(z.any()),
+  })
+  .catchall(z.any());
 export type EmbeddedMessageResponse = z.infer<
   typeof EmbeddedMessageResponseSchema
 >;
@@ -2635,7 +2320,7 @@ export const ErrorResponseSchema = z
     messages: z.array(MessageSchema).min(1),
     continue_url: z.string().url().optional(),
   })
-  .strict();
+  .catchall(z.any());
 export type ErrorResponse = z.infer<typeof ErrorResponseSchema>;
 
 export const ExceptionHourSchema = z
@@ -2652,24 +2337,7 @@ export const ExceptionHourSchema = z
     valid_from: z.string().date(),
     valid_through: z.string().date(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    const record = value as Record<string, unknown>;
-    for (const [subject, dependents] of [
-      ["closes", ["opens"]],
-      ["opens", ["closes"]],
-    ] as [string, string[]][]) {
-      if (record[subject] === undefined) continue;
-      for (const field of dependents) {
-        if (record[field] === undefined)
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `Field is required when ${subject} is present (dependentRequired)`,
-          });
-      }
-    }
-  });
+  .catchall(z.any());
 export type ExceptionHour = z.infer<typeof ExceptionHourSchema>;
 
 export const ExpectationLineItemSchema = z
@@ -2766,10 +2434,8 @@ export const Oauth2ProviderSchema = z
     required_claims: z
       .array(z.string())
       .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
       )
       .optional(),
   })
@@ -2777,17 +2443,7 @@ export const Oauth2ProviderSchema = z
 export type Oauth2Provider = z.infer<typeof Oauth2ProviderSchema>;
 
 export const ProviderBaseSchema = z
-  .object({
-    type: z.string().superRefine((value, ctx) => {
-      if ((["oauth2"] as readonly string[]).includes(value)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "Invalid discriminator value",
-          fatal: true,
-        });
-      }
-    }),
-  })
+  .object({ type: z.string() })
   .catchall(z.any());
 export type ProviderBase = z.infer<typeof ProviderBaseSchema>;
 
@@ -2855,6 +2511,23 @@ export type IdentityLinkingPlatform = z.infer<
   typeof IdentityLinkingPlatformSchema
 >;
 
+export const JsonrpcRequestSchema = z
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: IdSchema.optional(),
+    method: z.string().min(1),
+    params: z.union([z.record(z.any()), z.array(z.any())]).optional(),
+  })
+  .catchall(z.any());
+export type JsonrpcRequest = z.infer<typeof JsonrpcRequestSchema>;
+
+export const JsonrpcSuccessResponseSchema = z
+  .object({ jsonrpc: z.literal("2.0"), id: IdSchema, result: z.any() })
+  .catchall(z.any());
+export type JsonrpcSuccessResponse = z.infer<
+  typeof JsonrpcSuccessResponseSchema
+>;
+
 export const JsonrpcSchema = z.union([
   JsonrpcRequestSchema,
   JsonrpcSuccessResponseSchema,
@@ -2872,85 +2545,7 @@ export const JwkPublicKeySchema = z
     alg: z.string().optional(),
     use: z.string().optional(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    for (const rule of [
-      {
-        kind: "required",
-        discriminator: "kty",
-        values: ["EC"],
-        negated: false,
-        required: ["crv", "x", "y"],
-        field: null,
-        format: null,
-        target: null,
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-      {
-        kind: "required",
-        discriminator: "kty",
-        values: ["OKP"],
-        negated: false,
-        required: ["crv", "x"],
-        field: null,
-        format: null,
-        target: null,
-        minimum: null,
-        maximum: null,
-        exclusiveMinimum: null,
-        exclusiveMaximum: null,
-      },
-    ]) {
-      const record = value as Record<string, unknown>;
-      const discriminatorVal = record[rule.discriminator];
-      if (discriminatorVal === undefined) continue;
-      const matches = (rule.values as readonly unknown[]).includes(
-        discriminatorVal
-      );
-      if (rule.negated ? matches : !matches) continue;
-      if (rule.kind === "required") {
-        for (const field of rule.required) {
-          if (!(field in record))
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Field is required by a conditional constraint",
-            });
-        }
-        continue;
-      }
-      if (rule.kind === "format") {
-        const field = rule.field;
-        const fieldValue = field === null ? undefined : record[field];
-        if (rule.format === "uri" && typeof fieldValue === "string") {
-          if (!z.string().url().safeParse(fieldValue).success && field !== null)
-            ctx.addIssue({
-              code: z.ZodIssueCode.custom,
-              path: [field],
-              message: "Value must be a valid URI",
-            });
-        }
-        continue;
-      }
-      if (rule.target === null) continue;
-      const target = record[rule.target];
-      if (typeof target !== "number") continue;
-      const invalid =
-        (rule.minimum !== null && target < rule.minimum) ||
-        (rule.maximum !== null && target > rule.maximum) ||
-        (rule.exclusiveMinimum !== null && target <= rule.exclusiveMinimum) ||
-        (rule.exclusiveMaximum !== null && target >= rule.exclusiveMaximum);
-      if (invalid)
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: [rule.target],
-          message: "Value violates a conditional numeric constraint",
-        });
-    }
-  });
+  .catchall(z.any());
 export type JwkPublicKey = z.infer<typeof JwkPublicKeySchema>;
 
 export const LocalitySchema = z
@@ -2973,24 +2568,7 @@ export const LocationSchema = z
     exception_hours: z.array(ExceptionHourSchema).optional(),
     timezone: z.string().optional(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    const record = value as Record<string, unknown>;
-    for (const [subject, dependents] of [
-      ["exception_hours", ["timezone"]],
-      ["hours", ["timezone"]],
-    ] as [string, string[]][]) {
-      if (record[subject] === undefined) continue;
-      for (const field of dependents) {
-        if (record[field] === undefined)
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `Field is required when ${subject} is present (dependentRequired)`,
-          });
-      }
-    }
-  });
+  .catchall(z.any());
 export type Location = z.infer<typeof LocationSchema>;
 
 export const LocationDistanceSchema = z
@@ -2999,12 +2577,7 @@ export const LocationDistanceSchema = z
 export type LocationDistance = z.infer<typeof LocationDistanceSchema>;
 
 export const LocationFilterHoursSchema = z
-  .object({
-    open_at: z
-      .string()
-      .datetime({ offset: true })
-      .regex(new RegExp("(?:[Zz]|[+-](?:[01][0-9]|2[0-3]):[0-5][0-9])$")),
-  })
+  .object({ open_at: z.string().datetime({ offset: true }) })
   .catchall(z.any());
 export type LocationFilterHours = z.infer<typeof LocationFilterHoursSchema>;
 
@@ -3016,10 +2589,8 @@ export const LocationFilterSchema = z
       .array(z.string().min(1))
       .min(1)
       .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
       )
       .optional(),
   })
@@ -3070,13 +2641,7 @@ export const LocationServesSchema = z
       ])
       .optional(),
   })
-  .catchall(z.any())
-  .refine((value) => Object.keys(value).length >= 1, {
-    message: "Object must contain at least 1 property(ies) (minProperties)",
-  })
-  .refine((value) => Object.keys(value).length <= 1, {
-    message: "Object must contain at most 1 property(ies) (maxProperties)",
-  });
+  .catchall(z.any());
 export type LocationServes = z.infer<typeof LocationServesSchema>;
 
 export const LocationLookupRequestSchema = z
@@ -3108,24 +2673,7 @@ export const LookupLocationSchema = z
     timezone: z.string().optional(),
     inputs: z.array(LookupLocationInputSchema).min(1),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    const record = value as Record<string, unknown>;
-    for (const [subject, dependents] of [
-      ["exception_hours", ["timezone"]],
-      ["hours", ["timezone"]],
-    ] as [string, string[]][]) {
-      if (record[subject] === undefined) continue;
-      for (const field of dependents) {
-        if (record[field] === undefined)
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `Field is required when ${subject} is present (dependentRequired)`,
-          });
-      }
-    }
-  });
+  .catchall(z.any());
 export type LookupLocation = z.infer<typeof LookupLocationSchema>;
 
 export const ResponseLocationSchema = z
@@ -3239,11 +2787,12 @@ export type McpToolCallRequestParams = z.infer<
 
 export const McpToolCallRequestSchema = z
   .object({
-    method: z.literal("tools/call").optional(),
+    jsonrpc: z.literal("2.0"),
+    id: IdSchema.optional(),
+    method: z.literal("tools/call"),
     params: McpToolCallRequestParamsSchema,
   })
-  .catchall(z.any())
-  .and(JsonrpcRequestSchema);
+  .catchall(z.any());
 export type McpToolCallRequest = z.infer<typeof McpToolCallRequestSchema>;
 
 export const McpToolCallResponseResultSchema = z
@@ -3257,9 +2806,12 @@ export type McpToolCallResponseResult = z.infer<
 >;
 
 export const McpToolCallResponseSchema = z
-  .object({ result: McpToolCallResponseResultSchema.optional() })
-  .catchall(z.any())
-  .and(JsonrpcSuccessResponseSchema);
+  .object({
+    jsonrpc: z.literal("2.0"),
+    id: IdSchema,
+    result: McpToolCallResponseResultSchema,
+  })
+  .catchall(z.any());
 export type McpToolCallResponse = z.infer<typeof McpToolCallResponseSchema>;
 
 export const McpToolCallSchema = z.union([
@@ -3276,17 +2828,12 @@ export const RequestConstraintsSchema = z
       .array(z.string())
       .min(1)
       .refine(
-        (items) =>
-          new Set(items.map((item) => JSON.stringify(item))).size ===
-          items.length,
-        { message: "Array items must be unique (uniqueItems)" }
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
       )
       .optional(),
     properties: z
       .record(z.union([ConstraintExpressionSchema, ValueConstraintSchema]))
-      .refine((value) => Object.keys(value).length >= 1, {
-        message: "Object must contain at least 1 property(ies) (minProperties)",
-      })
       .optional(),
     anyOf: z.array(ConstraintExpressionSchema).min(1).optional(),
   })
@@ -3829,24 +3376,7 @@ export const TimeIntervalSchema = z
       .regex(new RegExp("^([01][0-9]|2[0-3]):[0-5][0-9]$"))
       .optional(),
   })
-  .catchall(z.any())
-  .superRefine((value, ctx) => {
-    const record = value as Record<string, unknown>;
-    for (const [subject, dependents] of [
-      ["closes", ["opens"]],
-      ["opens", ["closes"]],
-    ] as [string, string[]][]) {
-      if (record[subject] === undefined) continue;
-      for (const field of dependents) {
-        if (record[field] === undefined)
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: [field],
-            message: `Field is required when ${subject} is present (dependentRequired)`,
-          });
-      }
-    }
-  });
+  .catchall(z.any());
 export type TimeInterval = z.infer<typeof TimeIntervalSchema>;
 
 export const TokenCredentialSchema = z
@@ -3873,151 +3403,3 @@ export const UnitSchema = z
   })
   .catchall(z.any());
 export type Unit = z.infer<typeof UnitSchema>;
-
-export const BusinessLocationDestinationSchema = LocationDestinationSchema;
-export type BusinessLocationDestination = LocationDestination;
-
-export const BusinessLocationDestinationResponseSchema =
-  LocationDestinationSchema;
-export type BusinessLocationDestinationResponse = LocationDestination;
-
-export const CapabilitySchema = CapabilityResponseSchema;
-export type Capability = CapabilityResponse;
-
-export const CapabilityDiscoverySchema = CapabilityPlatformSchema;
-export type CapabilityDiscovery = CapabilityPlatform;
-
-export const CartResponseSchema = CartSchema;
-export type CartResponse = Cart;
-
-export const CatalogLookupRequestSignalsSchema = SignalsSchema;
-export type CatalogLookupRequestSignals = Signals;
-
-export const CheckoutCreateRequestContextSchema = ContextSchema;
-export type CheckoutCreateRequestContext = Context;
-
-export const CheckoutCreateRequestSignalsSchema = SignalsSchema;
-export type CheckoutCreateRequestSignals = Signals;
-
-export const CheckoutResponseSchema = CheckoutSchema;
-export type CheckoutResponse = Checkout;
-
-export const CheckoutResponseMessageSchema = MessageSchema;
-export type CheckoutResponseMessage = Message;
-
-export const CheckoutWithFulfillmentCreateRequestSchema =
-  CheckoutCreateRequestSchema;
-export type CheckoutWithFulfillmentCreateRequest = CheckoutCreateRequest;
-
-export const CheckoutWithFulfillmentUpdateRequestSchema =
-  CheckoutUpdateRequestSchema;
-export type CheckoutWithFulfillmentUpdateRequest = CheckoutUpdateRequest;
-
-export const DiscoveryProfileSchema = ProfileBusinessSchema;
-export type DiscoveryProfile = ProfileBusiness;
-
-export const EmbeddedSchema = EmbeddedConfigSchema;
-export type Embedded = EmbeddedConfig;
-
-export const FulfillmentAvailableMethodResponseSchema =
-  FulfillmentAvailableMethodSchema;
-export type FulfillmentAvailableMethodResponse = FulfillmentAvailableMethod;
-
-export const FulfillmentDestinationResponseSchema =
-  FulfillmentDestinationSchema;
-export type FulfillmentDestinationResponse = FulfillmentDestination;
-
-export const FulfillmentExpectationLineItemSchema = ExpectationLineItemSchema;
-export type FulfillmentExpectationLineItem = ExpectationLineItem;
-
-export const FulfillmentGroupResponseSchema = FulfillmentGroupSchema;
-export type FulfillmentGroupResponse = FulfillmentGroup;
-
-export const FulfillmentMethodResponseSchema = FulfillmentMethodSchema;
-export type FulfillmentMethodResponse = FulfillmentMethod;
-
-export const FulfillmentOptionBaseResponseSchema = FulfillmentOptionBaseSchema;
-export type FulfillmentOptionBaseResponse = FulfillmentOptionBase;
-
-export const FulfillmentOptionResponseSchema = FulfillmentOptionSchema;
-export type FulfillmentOptionResponse = FulfillmentOption;
-
-export const FulfillmentResponseSchema = FulfillmentSchema;
-export type FulfillmentResponse = Fulfillment;
-
-export const GetProductRequestSchema = CatalogGetProductRequestSchema;
-export type GetProductRequest = CatalogGetProductRequest;
-
-export const GetProductResponseSchema = CatalogGetProductResponseSchema;
-export type GetProductResponse = CatalogGetProductResponse;
-
-export const ItemResponseSchema = ItemSchema;
-export type ItemResponse = Item;
-
-export const LineItemQuantityRefSchema = AdjustmentLineItemSchema;
-export type LineItemQuantityRef = AdjustmentLineItem;
-
-export const LineItemResponseSchema = LineItemSchema;
-export type LineItemResponse = LineItem;
-
-export const LookupRequestSchema = CatalogLookupRequestSchema;
-export type LookupRequest = CatalogLookupRequest;
-
-export const LookupRequestSignalsSchema = SignalsSchema;
-export type LookupRequestSignals = Signals;
-
-export const LookupResponseSchema = CatalogLookupResponseSchema;
-export type LookupResponse = CatalogLookupResponse;
-
-export const LookupResponseMessageSchema = MessageSchema;
-export type LookupResponseMessage = Message;
-
-export const PaymentHandlerSchema = PaymentHandlerResponseSchema;
-export type PaymentHandler = PaymentHandlerResponse;
-
-export const PickupMethodResponseSchema = PickupMethodSchema;
-export type PickupMethodResponse = PickupMethod;
-
-export const SearchRequestSchema = CatalogSearchRequestSchema;
-export type SearchRequest = CatalogSearchRequest;
-
-export const SearchResponseSchema = CatalogSearchResponseSchema;
-export type SearchResponse = CatalogSearchResponse;
-
-export const SearchResponsePaginationSchema = PaginationResponseSchema;
-export type SearchResponsePagination = PaginationResponse;
-
-export const ServiceSchema = ServiceResponseSchema;
-export type Service = ServiceResponse;
-
-export const ShippingDestinationResponseSchema = ShippingDestinationSchema;
-export type ShippingDestinationResponse = ShippingDestination;
-
-export const ShippingMethodResponseSchema = ShippingMethodSchema;
-export type ShippingMethodResponse = ShippingMethod;
-
-export const TotalResponseSchema = TotalSchema;
-export type TotalResponse = Total;
-
-export const TotalsResponseSchema = TotalsItemSchema;
-export type TotalsResponse = TotalsItem;
-
-export const UcpSchema = UcpBusinessSchema;
-export type Ucp = UcpBusiness;
-
-export const UcpCheckoutResponseSchema = ResponseCheckoutSchema;
-export type UcpCheckoutResponse = ResponseCheckout;
-
-export const UcpDiscoveryProfileSchema = ProfileBusinessSchema;
-export type UcpDiscoveryProfile = ProfileBusiness;
-
-export const UcpProfileDocumentSchema = ProfileSchema;
-export type UcpProfileDocument = Profile;
-
-export const UcpServiceSchema = ServiceBusinessSchema;
-export type UcpService = ServiceBusiness;
-
-export const UcpResponseSchema = ResponseCheckoutSchema.partial({
-  payment_handlers: true,
-});
-export type UcpResponse = z.infer<typeof UcpResponseSchema>;
