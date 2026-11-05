@@ -1,3 +1,17 @@
+# Copyright 2026 UCP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: Release
 on:
   release:
@@ -17,18 +31,123 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 'lts/*'
+          node-version: "lts/*"
+
+      - name: Verify release tag, manifest version, lockfile, and branch ancestry
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v([0-9]{4})([0-9]{2})([0-9]{2})\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "::error::Release tag '$RELEASE_TAG' must match vYYYYMMDD.MINOR.PATCH"
+            exit 1
+          fi
+          YYYY="${BASH_REMATCH[1]}"
+          MM="${BASH_REMATCH[2]}"
+          DD="${BASH_REMATCH[3]}"
+          MINOR="${BASH_REMATCH[4]}"
+          PATCH="${BASH_REMATCH[5]}"
+          YYYYMMDD="${YYYY}${MM}${DD}"
+          if (( 10#$YYYYMMDD < 20261001 )); then
+            echo "::error::CalVer release epoch $YYYYMMDD must be >= 20261001"
+            exit 1
+          fi
+          EXPECTED_VERSION="${YYYYMMDD}.${MINOR}.${PATCH}"
+          EXPECTED_BRANCH="release/${YYYY}-${MM}-${DD}"
+
+          PKG_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          if [[ "$PKG_VERSION" == 0.0.0* ]]; then
+            echo "::error::Refusing to publish draft package.json version '$PKG_VERSION'"
+            exit 1
+          fi
+          if [[ "$PKG_VERSION" != "$EXPECTED_VERSION" ]]; then
+            echo "::error::package.json version '$PKG_VERSION' does not match tag version '$EXPECTED_VERSION'"
+            exit 1
+          fi
+
+          if [[ ! -f ucp-lock.json ]]; then
+            echo "::error::ucp-lock.json is missing"
+            exit 1
+          fi
+          LOCK_CHANNEL="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).channel")"
+          LOCK_REF="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_ref")"
+          UCP_SCHEMA_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_schema_version")"
+          if [[ "$LOCK_CHANNEL" != "release" || "$LOCK_REF" != "$EXPECTED_BRANCH" ]]; then
+            echo "::error::ucp-lock.json must have channel='release' and ucp_ref='$EXPECTED_BRANCH' (got channel='$LOCK_CHANNEL', ucp_ref='$LOCK_REF')"
+            exit 1
+          fi
+
+          git fetch origin "+refs/heads/${EXPECTED_BRANCH}:refs/remotes/origin/${EXPECTED_BRANCH}"
+          if ! git merge-base --is-ancestor HEAD "origin/${EXPECTED_BRANCH}"; then
+            echo "::error::Release commit $(git rev-parse HEAD) is not an ancestor of origin/${EXPECTED_BRANCH}"
+            exit 1
+          fi
+
+          if [[ -n "${GITHUB_ENV:-}" ]]; then
+            {
+              echo "YYYY=${YYYY}"
+              echo "MM=${MM}"
+              echo "DD=${DD}"
+              echo "YYYYMMDD=${YYYYMMDD}"
+              echo "EXPECTED_VERSION=${EXPECTED_VERSION}"
+              echo "UCP_SCHEMA_VERSION=${UCP_SCHEMA_VERSION}"
+            } >> "$GITHUB_ENV"
+          fi
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Install ucp-schema
+        env:
+          UCP_SCHEMA_VERSION: ${{ env.UCP_SCHEMA_VERSION }}
+        run: |
+          set -euo pipefail
+          TMP_BIN="$(mktemp -d)"
+          curl -fsSL -o "$TMP_BIN/ucp-schema-linux-x86_64" \
+            "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}/ucp-schema-linux-x86_64"
+          curl -fsSL -o "$TMP_BIN/SHA256SUMS" \
+            "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}/SHA256SUMS"
+          (cd "$TMP_BIN" && sha256sum -c --ignore-missing SHA256SUMS)
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 "$TMP_BIN/ucp-schema-linux-x86_64" "$HOME/.local/bin/ucp-schema"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          rm -rf "$TMP_BIN"
 
-      - name: Publish to NPM
-        run: npm publish --provenance --access public
+      - name: Run unit tests and verify model drift
+        run: |
+          set -euo pipefail
+          npm test
+          ./generate_models.sh --from-lock
+          git diff --exit-code
+
+      - name: Build and publish to NPM
+        env:
+          YYYY: ${{ env.YYYY }}
+          MM: ${{ env.MM }}
+          DD: ${{ env.DD }}
+          YYYYMMDD: ${{ env.YYYYMMDD }}
+          EXPECTED_VERSION: ${{ env.EXPECTED_VERSION }}
+        run: |
+          set -euo pipefail
+          npm install -g "npm@>=11.21.0"
+          npm run build
+          CURRENT_LATEST="$(npm view @ucp-js/sdk dist-tags.latest 2>/dev/null || echo "")"
+          if [[ "$CURRENT_LATEST" =~ ^([0-9]{8})\.[0-9]+\.[0-9]+$ ]]; then
+            LATEST_EPOCH="${BASH_REMATCH[1]}"
+          else
+            LATEST_EPOCH="0"
+          fi
+          RELEASE_DIST_TAG="release-${YYYY}-${MM}-${DD}"
+          if (( 10#$YYYYMMDD >= 10#$LATEST_EPOCH )); then
+            npm publish --provenance --access public --tag latest
+            npm dist-tag add "@ucp-js/sdk@${EXPECTED_VERSION}" "$RELEASE_DIST_TAG" || \
+              echo "::warning::Unable to attach secondary dist-tag ${RELEASE_DIST_TAG}; verify 'Allow npm dist-tag' is enabled on npmjs.com Trusted Publisher"
+          else
+            npm publish --provenance --access public --tag "$RELEASE_DIST_TAG"
+          fi
