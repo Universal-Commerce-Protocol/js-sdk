@@ -137,17 +137,28 @@ test("ErrorResponseSchema preserves unknown keys as a tolerant-reader DTO", () =
 
   const valueConstraint = ValueConstraintSchema.safeParse({
     const: "visa",
-    extra_hint: "preserved",
   });
   assert.ok(valueConstraint.success);
-  assert.equal(valueConstraint.data.extra_hint, "preserved");
+  assert.equal(
+    ValueConstraintSchema.safeParse({
+      const: "visa",
+      extra_hint: "rejected on closed grammar node",
+    }).success,
+    false
+  );
 
   const reqConstraints = RequestConstraintsSchema.safeParse({
-    properties: { brands: { const: "visa", extra_hint: "preserved" } },
-    extra_constraint: true,
+    properties: { brands: { const: "visa" } },
   });
   assert.ok(reqConstraints.success);
-  assert.equal(reqConstraints.data.extra_constraint, true);
+  assert.equal(reqConstraints.data.properties.brands.const, "visa");
+  assert.equal(
+    RequestConstraintsSchema.safeParse({
+      properties: { brands: { const: "visa" } },
+      extra_constraint: true,
+    }).success,
+    false
+  );
 });
 
 test("open-by-default UCP object schemas retain unknown keys", () => {

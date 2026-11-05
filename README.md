@@ -84,7 +84,35 @@ if (parseResult.success) {
 
 ### Validation
 
-Zod DTO schemas validate structural wire types and preserve unknown extension properties for forward compatibility, but they do not enforce full UCP protocol conformance on their own. To ensure all normative UCP message constraints (such as capability profile composition, directional `ucp_request` and `ucp_response` visibility, `dependentRequired`, `if`/`then`, `uniqueItems`, `contains`, `propertyNames`, `not.enum`, and closed-schema rules) are satisfied, verify received JSON payloads with [`ucp-schema validate`](https://github.com/Universal-Commerce-Protocol/ucp-schema) before deserializing into SDK DTOs:
+Zod DTO schemas validate structural wire types and preserve unknown extension properties for forward compatibility, but they do not enforce full UCP protocol conformance on their own.
+
+To enforce normative UCP message constraints (capability profile composition, directional `ucp_request` and `ucp_response` visibility, `dependentRequired`, `if`/`then`, `uniqueItems`, `contains`, `propertyNames`, `not.enum`, and closed-schema rules):
+
+1. **In-Memory Runtime Validation (Production Services)**: Compile your UCP discovery profile once at build or startup time into a standard JSON Schema Draft 2020-12 bundle (`ucp-schema generate-types --profile profile.json -o ucp.types.json`) or OpenAPI 3.1 specification (`ucp-schema generate-openapi --profile profile.json -o openapi.json`). Because `ucp-schema` resolves all UCP-specific annotations and capability extensions into standard JSON Schema 2020-12, your server can validate payloads in memory on every request using [`ajv`](https://ajv.js.org/) (`Ajv2020`) or standard OpenAPI middleware before parsing into SDK DTOs:
+
+```typescript
+import fs from "node:fs";
+import Ajv2020 from "ajv/dist/2020.js";
+import addFormats from "ajv-formats";
+import { CheckoutSchema, Checkout } from "@ucp-js/sdk";
+
+// At startup: compile the pre-generated schema bundle once in memory
+const bundle = JSON.parse(fs.readFileSync("ucp.types.json", "utf8"));
+const ajv = new Ajv2020({ strict: false });
+addFormats(ajv);
+ajv.addSchema(bundle, "https://ucp.dev/bundle.json");
+const validateCheckout = ajv.getSchema(
+  "https://ucp.dev/bundle.json#/$defs/Checkout"
+)!;
+
+// Per request: validate in-memory, then parse into a typed DTO
+if (!validateCheckout(rawPayload)) {
+  throw new Error(ajv.errorsText(validateCheckout.errors));
+}
+const checkout: Checkout = CheckoutSchema.parse(rawPayload);
+```
+
+2. **CLI & CI Conformance Testing**: Verify fixture payloads or recorded traffic from the command line or CI pipelines with [`ucp-schema validate`](https://github.com/Universal-Commerce-Protocol/ucp-schema):
 
 ```bash
 # 1. Verify a self-describing response or JSON-RPC payload
@@ -92,23 +120,6 @@ ucp-schema validate payload.json --op read
 
 # Or verify a REST request against a negotiated discovery profile
 ucp-schema validate payload.json --profile profile.json --op create
-```
-
-```typescript
-import { execFileSync } from "node:child_process";
-import fs from "node:fs";
-import { CheckoutSchema, Checkout } from "@ucp-js/sdk";
-
-// Step 1: Verify normative UCP protocol conformance prior to deserialization
-execFileSync("ucp-schema", ["validate", "payload.json", "--op", "read"]);
-
-// Step 2: Deserialize the verified JSON payload into a typed DTO
-const rawJson = fs.readFileSync("payload.json", "utf8");
-const parseResult = CheckoutSchema.safeParse(JSON.parse(rawJson));
-if (parseResult.success) {
-  const checkout: Checkout = parseResult.data;
-  console.log(checkout.id);
-}
 ```
 
 ## Development

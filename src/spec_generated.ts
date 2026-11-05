@@ -285,13 +285,160 @@ export const ArgumentsSchema = z
   .catchall(z.any());
 export type Arguments = z.infer<typeof ArgumentsSchema>;
 
-export const AttributionSchema = z.record(z.string());
-export type Attribution = z.infer<typeof AttributionSchema>;
-
-export const AvailabilitySchema = z
-  .object({ available: z.boolean().optional(), status: z.string().optional() })
+export const ContextPaymentSchema = z
+  .object({
+    handler: ReverseDomainNameSchema,
+    types: z.array(z.string()).optional(),
+  })
   .catchall(z.any());
-export type Availability = z.infer<typeof AvailabilitySchema>;
+export type ContextPayment = z.infer<typeof ContextPaymentSchema>;
+
+export const ContextSchema = z
+  .object({
+    address_country: z.string().optional(),
+    address_region: z.string().optional(),
+    postal_code: z.string().optional(),
+    location: z.string().optional(),
+    intent: z.string().optional(),
+    language: z.string().optional(),
+    currency: z.string().optional(),
+    eligibility: z
+      .array(ReverseDomainNameSchema)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    payment: z.array(ContextPaymentSchema).optional(),
+  })
+  .catchall(z.any());
+export type Context = z.infer<typeof ContextSchema>;
+
+export const ConversationSchema = z
+  .object({
+    id: z.string(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .catchall(z.any());
+export type Conversation = z.infer<typeof ConversationSchema>;
+
+export const SignalsSchema = z
+  .object({
+    "dev.ucp.buyer_ip": z.string().optional(),
+    "dev.ucp.user_agent": z.string().optional(),
+  })
+  .catchall(z.any());
+export type Signals = z.infer<typeof SignalsSchema>;
+
+export const AskRequestSchema = z
+  .object({
+    query: z.string(),
+    conversation: ConversationSchema.optional(),
+    ids: z.array(z.string()).optional(),
+    context: ContextSchema.optional(),
+    signals: SignalsSchema.optional(),
+  })
+  .catchall(z.any());
+export type AskRequest = z.infer<typeof AskRequestSchema>;
+
+export const AskResponseAnswerSchema = z
+  .object({
+    plain: z.string(),
+    html: z.string().optional(),
+    markdown: z.string().optional(),
+  })
+  .catchall(z.any());
+export type AskResponseAnswer = z.infer<typeof AskResponseAnswerSchema>;
+
+export const LinkSchema = z
+  .object({
+    type: z.string(),
+    url: z.string().url(),
+    title: z.string().optional(),
+    id: z.string().optional(),
+  })
+  .catchall(z.any());
+export type Link = z.infer<typeof LinkSchema>;
+
+export const ErrorCodeSchema = z.string();
+export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
+
+export const MessageErrorSchema = z
+  .object({
+    type: z.literal("error"),
+    code: ErrorCodeSchema,
+    path: z.string().optional(),
+    content_type: z.enum(["plain", "markdown"]).optional(),
+    content: z.string(),
+    severity: z.enum([
+      "recoverable",
+      "requires_buyer_input",
+      "requires_buyer_review",
+      "unrecoverable",
+    ]),
+  })
+  .catchall(z.any());
+export type MessageError = z.infer<typeof MessageErrorSchema>;
+
+export const InfoCodeSchema = z.string();
+export type InfoCode = z.infer<typeof InfoCodeSchema>;
+
+export const MessageInfoSchema = z
+  .object({
+    type: z.literal("info"),
+    path: z.string().optional(),
+    code: InfoCodeSchema.optional(),
+    content_type: z.enum(["plain", "markdown"]).optional(),
+    content: z.string(),
+  })
+  .catchall(z.any());
+export type MessageInfo = z.infer<typeof MessageInfoSchema>;
+
+export const WarningCodeSchema = z.string();
+export type WarningCode = z.infer<typeof WarningCodeSchema>;
+
+export const MessageWarningSchema = z
+  .object({
+    type: z.literal("warning"),
+    path: z.string().optional(),
+    code: WarningCodeSchema,
+    content: z.string(),
+    content_type: z.enum(["plain", "markdown"]).optional(),
+    presentation: z.string().optional(),
+    image_url: z.string().url().optional(),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type MessageWarning = z.infer<typeof MessageWarningSchema>;
+
+export const MessageSchema = z.union([
+  MessageErrorSchema,
+  MessageWarningSchema,
+  MessageInfoSchema,
+]);
+export type Message = z.infer<typeof MessageSchema>;
+
+export const VersionSchema = z
+  .string()
+  .regex(new RegExp("^\\d{4}-\\d{2}-\\d{2}$"));
+export type Version = z.infer<typeof VersionSchema>;
+
+export const CapabilityResponseSchema = z
+  .object({
+    version: VersionSchema,
+    spec: z.string().url().optional(),
+    schema: z.string().url().optional(),
+    id: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    extends: z
+      .union([ReverseDomainNameSchema, z.array(ReverseDomainNameSchema).min(1)])
+      .optional(),
+  })
+  .catchall(z.any());
+export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
+
+export const MapOrderSchema = z.record(z.array(z.string()));
+export type MapOrder = z.infer<typeof MapOrderSchema>;
 
 export const ValueConstraintConstSchema = z
   .object({
@@ -305,7 +452,7 @@ export const ValueConstraintConstSchema = z
       .optional(),
     const: z.any(),
   })
-  .catchall(z.any());
+  .strict();
 export type ValueConstraintConst = z.infer<typeof ValueConstraintConstSchema>;
 
 export const ValueConstraintEnumSchema = z
@@ -319,7 +466,7 @@ export const ValueConstraintEnumSchema = z
       ),
     const: z.any().optional(),
   })
-  .catchall(z.any());
+  .strict();
 export type ValueConstraintEnum = z.infer<typeof ValueConstraintEnumSchema>;
 
 export const ValueConstraintSchema = z.union([
@@ -351,7 +498,7 @@ export const ConstraintExpressionSchema: z.ZodType<any> = z
       .min(1)
       .optional(),
   })
-  .catchall(z.any());
+  .strict();
 export type ConstraintExpression = z.infer<typeof ConstraintExpressionSchema>;
 
 export const AvailablePaymentInstrumentSchema = z
@@ -363,6 +510,71 @@ export const AvailablePaymentInstrumentSchema = z
 export type AvailablePaymentInstrument = z.infer<
   typeof AvailablePaymentInstrumentSchema
 >;
+
+export const PaymentHandlerBaseSchema = z
+  .object({
+    version: VersionSchema,
+    spec: z.string().url().optional(),
+    schema: z.string().url().optional(),
+    id: z.string(),
+    config: z.record(z.any()).optional(),
+    available_instruments: z
+      .array(AvailablePaymentInstrumentSchema)
+      .min(1)
+      .optional(),
+  })
+  .catchall(z.any());
+export type PaymentHandlerBase = z.infer<typeof PaymentHandlerBaseSchema>;
+
+export const ServiceBaseSchema = z
+  .object({
+    version: VersionSchema,
+    spec: z.string().url().optional(),
+    schema: z.string().url().optional(),
+    id: z.string().optional(),
+    config: z.record(z.any()).optional(),
+    transport: z.enum(["rest", "mcp", "a2a", "embedded"]),
+    endpoint: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type ServiceBase = z.infer<typeof ServiceBaseSchema>;
+
+export const ResponseAskSchema = z
+  .object({
+    version: VersionSchema,
+    map_order: MapOrderSchema.optional(),
+    status: z.enum(["success", "error"]).optional(),
+    services: z
+      .record(ReverseDomainNameSchema, z.array(ServiceBaseSchema))
+      .optional(),
+    capabilities: z
+      .record(ReverseDomainNameSchema, z.array(CapabilityResponseSchema))
+      .optional(),
+    payment_handlers: z
+      .record(ReverseDomainNameSchema, z.array(PaymentHandlerBaseSchema))
+      .optional(),
+  })
+  .catchall(z.any());
+export type ResponseAsk = z.infer<typeof ResponseAskSchema>;
+
+export const AskResponseSchema = z
+  .object({
+    ucp: ResponseAskSchema,
+    answer: AskResponseAnswerSchema,
+    conversation: ConversationSchema.optional(),
+    links: z.array(LinkSchema).optional(),
+    messages: z.array(MessageSchema).optional(),
+  })
+  .catchall(z.any());
+export type AskResponse = z.infer<typeof AskResponseSchema>;
+
+export const AttributionSchema = z.record(z.string());
+export type Attribution = z.infer<typeof AttributionSchema>;
+
+export const AvailabilitySchema = z
+  .object({ available: z.boolean().optional(), status: z.string().optional() })
+  .catchall(z.any());
+export type Availability = z.infer<typeof AvailabilitySchema>;
 
 export const BindingSchema = z
   .object({ type: ReverseDomainNameSchema, id: z.string().min(1) })
@@ -406,15 +618,6 @@ export type BusinessSplitPaymentsConfig = z.infer<
   typeof BusinessSplitPaymentsConfigSchema
 >;
 
-export const LinkSchema = z
-  .object({
-    type: z.string(),
-    url: z.string().url(),
-    title: z.string().optional(),
-  })
-  .catchall(z.any());
-export type Link = z.infer<typeof LinkSchema>;
-
 export const ConsentSegmentSchema = z
   .object({
     granted: z.boolean(),
@@ -454,11 +657,6 @@ export const BuyerSchema = z
   })
   .catchall(z.any());
 export type Buyer = z.infer<typeof BuyerSchema>;
-
-export const VersionSchema = z
-  .string()
-  .regex(new RegExp("^\\d{4}-\\d{2}-\\d{2}$"));
-export type Version = z.infer<typeof VersionSchema>;
 
 export const CapabilityBaseSchema = z
   .object({
@@ -501,20 +699,6 @@ export const CapabilityPlatformSchema = z
   })
   .catchall(z.any());
 export type CapabilityPlatform = z.infer<typeof CapabilityPlatformSchema>;
-
-export const CapabilityResponseSchema = z
-  .object({
-    version: VersionSchema,
-    spec: z.string().url().optional(),
-    schema: z.string().url().optional(),
-    id: z.string().optional(),
-    config: z.record(z.any()).optional(),
-    extends: z
-      .union([ReverseDomainNameSchema, z.array(ReverseDomainNameSchema).min(1)])
-      .optional(),
-  })
-  .catchall(z.any());
-export type CapabilityResponse = z.infer<typeof CapabilityResponseSchema>;
 
 /** @deprecated use PAN Credential (`pan_credential.json`) or Network Token Credential (`network_token_credential.json`). A card credential containing sensitive payment card details including raw Primary Account Numbers (PANs). This credential type MUST NOT be used for checkout, only with payment handlers that tokenize or encrypt credentials. CRITICAL: Both parties handling CardCredential (sender and receiver) MUST be PCI DSS compliant. Transmission MUST use HTTPS/TLS with strong cipher suites. */
 export const CardCredentialSchema = z
@@ -580,35 +764,6 @@ export const CardPaymentInstrumentSchema = z
   })
   .catchall(z.any());
 export type CardPaymentInstrument = z.infer<typeof CardPaymentInstrumentSchema>;
-
-export const ContextPaymentSchema = z
-  .object({
-    handler: ReverseDomainNameSchema,
-    types: z.array(z.string()).optional(),
-  })
-  .catchall(z.any());
-export type ContextPayment = z.infer<typeof ContextPaymentSchema>;
-
-export const ContextSchema = z
-  .object({
-    address_country: z.string().optional(),
-    address_region: z.string().optional(),
-    postal_code: z.string().optional(),
-    location: z.string().optional(),
-    intent: z.string().optional(),
-    language: z.string().optional(),
-    currency: z.string().optional(),
-    eligibility: z
-      .array(ReverseDomainNameSchema)
-      .refine(
-        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
-        "All items must be unique!"
-      )
-      .optional(),
-    payment: z.array(ContextPaymentSchema).optional(),
-  })
-  .catchall(z.any());
-export type Context = z.infer<typeof ContextSchema>;
 
 export const DiscountsObjectSchema = z
   .object({
@@ -751,64 +906,6 @@ export const LoyaltySchema = z.record(
 );
 export type Loyalty = z.infer<typeof LoyaltySchema>;
 
-export const ErrorCodeSchema = z.string();
-export type ErrorCode = z.infer<typeof ErrorCodeSchema>;
-
-export const MessageErrorSchema = z
-  .object({
-    type: z.literal("error"),
-    code: ErrorCodeSchema,
-    path: z.string().optional(),
-    content_type: z.enum(["plain", "markdown"]).optional(),
-    content: z.string(),
-    severity: z.enum([
-      "recoverable",
-      "requires_buyer_input",
-      "requires_buyer_review",
-      "unrecoverable",
-    ]),
-  })
-  .catchall(z.any());
-export type MessageError = z.infer<typeof MessageErrorSchema>;
-
-export const InfoCodeSchema = z.string();
-export type InfoCode = z.infer<typeof InfoCodeSchema>;
-
-export const MessageInfoSchema = z
-  .object({
-    type: z.literal("info"),
-    path: z.string().optional(),
-    code: InfoCodeSchema.optional(),
-    content_type: z.enum(["plain", "markdown"]).optional(),
-    content: z.string(),
-  })
-  .catchall(z.any());
-export type MessageInfo = z.infer<typeof MessageInfoSchema>;
-
-export const WarningCodeSchema = z.string();
-export type WarningCode = z.infer<typeof WarningCodeSchema>;
-
-export const MessageWarningSchema = z
-  .object({
-    type: z.literal("warning"),
-    path: z.string().optional(),
-    code: WarningCodeSchema,
-    content: z.string(),
-    content_type: z.enum(["plain", "markdown"]).optional(),
-    presentation: z.string().optional(),
-    image_url: z.string().url().optional(),
-    url: z.string().url().optional(),
-  })
-  .catchall(z.any());
-export type MessageWarning = z.infer<typeof MessageWarningSchema>;
-
-export const MessageSchema = z.union([
-  MessageErrorSchema,
-  MessageWarningSchema,
-  MessageInfoSchema,
-]);
-export type Message = z.infer<typeof MessageSchema>;
-
 export const DescriptionSchema = z
   .object({
     plain: z.string().optional(),
@@ -828,37 +925,6 @@ export const PolicySchema = z
   .catchall(z.any());
 export type Policy = z.infer<typeof PolicySchema>;
 
-export const MapOrderSchema = z.record(z.array(z.string()));
-export type MapOrder = z.infer<typeof MapOrderSchema>;
-
-export const PaymentHandlerBaseSchema = z
-  .object({
-    version: VersionSchema,
-    spec: z.string().url().optional(),
-    schema: z.string().url().optional(),
-    id: z.string(),
-    config: z.record(z.any()).optional(),
-    available_instruments: z
-      .array(AvailablePaymentInstrumentSchema)
-      .min(1)
-      .optional(),
-  })
-  .catchall(z.any());
-export type PaymentHandlerBase = z.infer<typeof PaymentHandlerBaseSchema>;
-
-export const ServiceBaseSchema = z
-  .object({
-    version: VersionSchema,
-    spec: z.string().url().optional(),
-    schema: z.string().url().optional(),
-    id: z.string().optional(),
-    config: z.record(z.any()).optional(),
-    transport: z.enum(["rest", "mcp", "a2a", "embedded"]),
-    endpoint: z.string().url().optional(),
-  })
-  .catchall(z.any());
-export type ServiceBase = z.infer<typeof ServiceBaseSchema>;
-
 export const ResponseCartSchema = z
   .object({
     version: VersionSchema,
@@ -876,14 +942,6 @@ export const ResponseCartSchema = z
   })
   .catchall(z.any());
 export type ResponseCart = z.infer<typeof ResponseCartSchema>;
-
-export const SignalsSchema = z
-  .object({
-    "dev.ucp.buyer_ip": z.string().optional(),
-    "dev.ucp.user_agent": z.string().optional(),
-  })
-  .catchall(z.any());
-export type Signals = z.infer<typeof SignalsSchema>;
 
 export const TotalsItemLineSchema = z
   .object({ display_text: z.string(), amount: SignedAmountSchema })
@@ -2779,7 +2837,7 @@ export const RequestConstraintsSchema = z
       .optional(),
     anyOf: z.array(ConstraintExpressionSchema).min(1).optional(),
   })
-  .catchall(z.any());
+  .strict();
 export type RequestConstraints = z.infer<typeof RequestConstraintsSchema>;
 
 export const MembersSchema = z
