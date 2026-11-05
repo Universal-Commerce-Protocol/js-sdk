@@ -39,9 +39,14 @@
 // The schemas are compiled from src/spec_generated.ts by the "pretest" step so
 // the test exercises the generated zod schemas directly.
 
+const fs = require("node:fs");
+const path = require("node:path");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
+const ucpLock = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "..", "ucp-lock.json"), "utf8")
+);
 const g = require("./.dist/spec_generated.js");
 
 const accepts = (schema, value) => schema.safeParse(value).success === true;
@@ -403,6 +408,7 @@ const oracle = {
   LocationDestinationSchema: {
     address: "optional",
     id: "required",
+    ...(ucpLock.ucp_ref !== "release/2026-08-25" ? { media: "optional" } : {}),
     name: "required",
     type: "required",
   },

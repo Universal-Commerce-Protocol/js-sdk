@@ -818,12 +818,55 @@ export const ItemSchema = z
     id: z.string(),
     title: z.string(),
     price: AmountSchema,
+    list_price: AmountSchema.optional(),
     quantity_unit: QuantityUnitSchema.optional(),
     unit_price: UnitPriceSchema.optional(),
     image_url: z.string().url().optional(),
   })
   .catchall(z.any());
 export type Item = z.infer<typeof ItemSchema>;
+
+export const DescriptionSchema = z
+  .object({
+    plain: z.string().optional(),
+    html: z.string().optional(),
+    markdown: z.string().optional(),
+  })
+  .catchall(z.any());
+export type Description = z.infer<typeof DescriptionSchema>;
+
+export const PriceSchema = z
+  .object({
+    amount: AmountSchema,
+    currency: z.string().regex(new RegExp("^[A-Z]{3}$")),
+  })
+  .catchall(z.any());
+export type Price = z.infer<typeof PriceSchema>;
+
+export const DurationSchema = z.string().duration();
+export type Duration = z.infer<typeof DurationSchema>;
+
+export const SubscriptionScheduleSchema = z
+  .object({
+    description: DescriptionSchema,
+    totals: z.array(TotalSchema).min(1),
+    interval: DurationSchema.optional(),
+    starts_at: z.string().datetime({ offset: true }).optional(),
+    ends_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .catchall(z.any());
+export type SubscriptionSchedule = z.infer<typeof SubscriptionScheduleSchema>;
+
+export const PurchaseOptionSchema = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    description: DescriptionSchema.optional(),
+    price: PriceSchema,
+    schedules: z.array(SubscriptionScheduleSchema).min(1).optional(),
+  })
+  .catchall(z.any());
+export type PurchaseOption = z.infer<typeof PurchaseOptionSchema>;
 
 export const LineItemSchema = z
   .object({
@@ -832,6 +875,8 @@ export const LineItemSchema = z
     quantity: z.number().int().gte(1).lte(9007199254740991),
     totals: z.array(TotalSchema),
     parent_id: z.string().optional(),
+    purchase_options: z.array(PurchaseOptionSchema).min(1).optional(),
+    selected_purchase_option_id: z.string().optional(),
   })
   .catchall(z.any());
 export type LineItem = z.infer<typeof LineItemSchema>;
@@ -906,24 +951,41 @@ export const LoyaltySchema = z.record(
 );
 export type Loyalty = z.infer<typeof LoyaltySchema>;
 
-export const DescriptionSchema = z
+export const PurchaseOptionsPoliciesItemBaseSchema = z
   .object({
-    plain: z.string().optional(),
-    html: z.string().optional(),
-    markdown: z.string().optional(),
-  })
-  .catchall(z.any());
-export type Description = z.infer<typeof DescriptionSchema>;
-
-export const PolicySchema = z
-  .object({
-    type: ReverseDomainNameSchema,
+    type: z
+      .string()
+      .regex(
+        new RegExp(
+          "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$"
+        )
+      ),
     description: DescriptionSchema,
     applies_to: z.array(z.string()).optional(),
     url: z.string().url().optional(),
   })
   .catchall(z.any());
-export type Policy = z.infer<typeof PolicySchema>;
+export type PurchaseOptionsPoliciesItemBase = z.infer<
+  typeof PurchaseOptionsPoliciesItemBaseSchema
+>;
+
+export const SubscriptionPolicySchema = z
+  .object({
+    type: z.literal("dev.ucp.shopping.policy.subscription"),
+    description: DescriptionSchema,
+    applies_to: z.array(z.string()).optional(),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type SubscriptionPolicy = z.infer<typeof SubscriptionPolicySchema>;
+
+export const PurchaseOptionsPoliciesItemSchema = z.union([
+  SubscriptionPolicySchema,
+  PurchaseOptionsPoliciesItemBaseSchema,
+]);
+export type PurchaseOptionsPoliciesItem = z.infer<
+  typeof PurchaseOptionsPoliciesItemSchema
+>;
 
 export const ResponseCartSchema = z
   .object({
@@ -975,7 +1037,7 @@ export const CartSchema = z
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
     links: z.array(LinkSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PurchaseOptionsPoliciesItemSchema).optional(),
     continue_url: z.string().url().optional(),
     expires_at: z.string().datetime({ offset: true }).optional(),
     loyalty: LoyaltySchema.optional(),
@@ -1000,6 +1062,7 @@ export const LineItemCreateRequestSchema = z
   .object({
     item: ItemCreateRequestSchema,
     quantity: z.number().int().gte(1).lte(9007199254740991),
+    selected_purchase_option_id: z.string().optional(),
   })
   .catchall(z.any());
 export type LineItemCreateRequest = z.infer<typeof LineItemCreateRequestSchema>;
@@ -1034,6 +1097,7 @@ export const LineItemUpdateRequestSchema = z
     item: ItemUpdateRequestSchema,
     quantity: z.number().int().gte(1).lte(9007199254740991),
     parent_id: z.string().optional(),
+    selected_purchase_option_id: z.string().optional(),
   })
   .catchall(z.any());
 export type LineItemUpdateRequest = z.infer<typeof LineItemUpdateRequestSchema>;
@@ -1130,40 +1194,6 @@ export const CategorySchema = z
   .object({ value: z.string(), taxonomy: z.string().optional() })
   .catchall(z.any());
 export type Category = z.infer<typeof CategorySchema>;
-
-export const DetailOptionValueSchema = z
-  .object({
-    id: z.string().optional(),
-    label: z.string(),
-    available: z.boolean().optional(),
-    exists: z.boolean().optional(),
-  })
-  .catchall(z.any());
-export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
-
-export const FulfillmentDetailProductOptionSchema = z
-  .object({ name: z.string(), values: z.array(DetailOptionValueSchema).min(1) })
-  .catchall(z.any());
-export type FulfillmentDetailProductOption = z.infer<
-  typeof FulfillmentDetailProductOptionSchema
->;
-
-export const FulfillmentVariantBarcodeSchema = z
-  .object({ type: z.string(), value: z.string() })
-  .catchall(z.any());
-export type FulfillmentVariantBarcode = z.infer<
-  typeof FulfillmentVariantBarcodeSchema
->;
-
-export const FulfillmentVariantSellerSchema = z
-  .object({
-    name: z.string().optional(),
-    links: z.array(LinkSchema).optional(),
-  })
-  .catchall(z.any());
-export type FulfillmentVariantSeller = z.infer<
-  typeof FulfillmentVariantSellerSchema
->;
 
 export const MediaBasePreviewSchema = z
   .object({
@@ -1308,13 +1338,44 @@ export const MediaSchema = z.union([
 ]);
 export type Media = z.infer<typeof MediaSchema>;
 
-export const PriceSchema = z
+export const PriceRangeSchema = z
+  .object({ min: PriceSchema, max: PriceSchema })
+  .catchall(z.any());
+export type PriceRange = z.infer<typeof PriceRangeSchema>;
+
+export const DetailOptionValueSchema = z
   .object({
-    amount: AmountSchema,
-    currency: z.string().regex(new RegExp("^[A-Z]{3}$")),
+    id: z.string().optional(),
+    label: z.string(),
+    available: z.boolean().optional(),
+    exists: z.boolean().optional(),
   })
   .catchall(z.any());
-export type Price = z.infer<typeof PriceSchema>;
+export type DetailOptionValue = z.infer<typeof DetailOptionValueSchema>;
+
+export const PurchaseOptionsDetailProductOptionSchema = z
+  .object({ name: z.string(), values: z.array(DetailOptionValueSchema).min(1) })
+  .catchall(z.any());
+export type PurchaseOptionsDetailProductOption = z.infer<
+  typeof PurchaseOptionsDetailProductOptionSchema
+>;
+
+export const PurchaseOptionsVariantBarcodeSchema = z
+  .object({ type: z.string(), value: z.string() })
+  .catchall(z.any());
+export type PurchaseOptionsVariantBarcode = z.infer<
+  typeof PurchaseOptionsVariantBarcodeSchema
+>;
+
+export const PurchaseOptionsVariantSellerSchema = z
+  .object({
+    name: z.string().optional(),
+    links: z.array(LinkSchema).optional(),
+  })
+  .catchall(z.any());
+export type PurchaseOptionsVariantSeller = z.infer<
+  typeof PurchaseOptionsVariantSellerSchema
+>;
 
 export const RatingSchema = z
   .object({
@@ -1326,11 +1387,11 @@ export const RatingSchema = z
   .catchall(z.any());
 export type Rating = z.infer<typeof RatingSchema>;
 
-export const FulfillmentVariantSchema = z
+export const PurchaseOptionsVariantSchema = z
   .object({
     id: z.string(),
     sku: z.string().optional(),
-    barcodes: z.array(FulfillmentVariantBarcodeSchema).optional(),
+    barcodes: z.array(PurchaseOptionsVariantBarcodeSchema).optional(),
     handle: z.string().optional(),
     title: z.string(),
     description: DescriptionSchema,
@@ -1346,18 +1407,15 @@ export const FulfillmentVariantSchema = z
     rating: RatingSchema.optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.any()).optional(),
-    seller: FulfillmentVariantSellerSchema.optional(),
-    fulfillment: CatalogFulfillmentSchema.optional(),
+    seller: PurchaseOptionsVariantSellerSchema.optional(),
+    purchase_options: z.array(PurchaseOptionSchema).min(1).optional(),
   })
   .catchall(z.any());
-export type FulfillmentVariant = z.infer<typeof FulfillmentVariantSchema>;
+export type PurchaseOptionsVariant = z.infer<
+  typeof PurchaseOptionsVariantSchema
+>;
 
-export const PriceRangeSchema = z
-  .object({ min: PriceSchema, max: PriceSchema })
-  .catchall(z.any());
-export type PriceRange = z.infer<typeof PriceRangeSchema>;
-
-export const FulfillmentDetailProductSchema = z
+export const PurchaseOptionsDetailProductSchema = z
   .object({
     id: z.string(),
     handle: z.string().optional(),
@@ -1368,16 +1426,16 @@ export const FulfillmentDetailProductSchema = z
     price_range: PriceRangeSchema,
     list_price_range: PriceRangeSchema.optional(),
     media: z.array(MediaSchema).optional(),
-    options: z.array(FulfillmentDetailProductOptionSchema).optional(),
-    variants: z.array(FulfillmentVariantSchema).min(1),
+    options: z.array(PurchaseOptionsDetailProductOptionSchema).optional(),
+    variants: z.array(PurchaseOptionsVariantSchema).min(1),
     rating: RatingSchema.optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.any()).optional(),
     selected: z.array(SelectedOptionSchema).optional(),
   })
   .catchall(z.any());
-export type FulfillmentDetailProduct = z.infer<
-  typeof FulfillmentDetailProductSchema
+export type PurchaseOptionsDetailProduct = z.infer<
+  typeof PurchaseOptionsDetailProductSchema
 >;
 
 export const ResponseCatalogSchema = z
@@ -1401,10 +1459,10 @@ export type ResponseCatalog = z.infer<typeof ResponseCatalogSchema>;
 export const CatalogGetProductResponseSchema = z
   .object({
     ucp: ResponseCatalogSchema,
-    product: FulfillmentDetailProductSchema,
+    product: PurchaseOptionsDetailProductSchema,
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PurchaseOptionsPoliciesItemSchema).optional(),
     loyalty: LoyaltySchema.optional(),
   })
   .catchall(z.any());
@@ -1423,33 +1481,43 @@ export const CatalogLookupRequestSchema = z
   .catchall(z.any());
 export type CatalogLookupRequest = z.infer<typeof CatalogLookupRequestSchema>;
 
-export const FulfillmentLookupVariantBarcodeSchema = z
-  .object({ type: z.string(), value: z.string() })
+export const OptionValueSchema = z
+  .object({ id: z.string().optional(), label: z.string() })
   .catchall(z.any());
-export type FulfillmentLookupVariantBarcode = z.infer<
-  typeof FulfillmentLookupVariantBarcodeSchema
->;
+export type OptionValue = z.infer<typeof OptionValueSchema>;
 
-export const FulfillmentLookupVariantSellerSchema = z
-  .object({
-    name: z.string().optional(),
-    links: z.array(LinkSchema).optional(),
-  })
+export const ProductOptionSchema = z
+  .object({ name: z.string(), values: z.array(OptionValueSchema).min(1) })
   .catchall(z.any());
-export type FulfillmentLookupVariantSeller = z.infer<
-  typeof FulfillmentLookupVariantSellerSchema
->;
+export type ProductOption = z.infer<typeof ProductOptionSchema>;
 
 export const InputCorrelationSchema = z
   .object({ id: z.string(), match: z.string().optional() })
   .catchall(z.any());
 export type InputCorrelation = z.infer<typeof InputCorrelationSchema>;
 
-export const FulfillmentLookupVariantSchema = z
+export const PurchaseOptionsLookupVariantBarcodeSchema = z
+  .object({ type: z.string(), value: z.string() })
+  .catchall(z.any());
+export type PurchaseOptionsLookupVariantBarcode = z.infer<
+  typeof PurchaseOptionsLookupVariantBarcodeSchema
+>;
+
+export const PurchaseOptionsLookupVariantSellerSchema = z
+  .object({
+    name: z.string().optional(),
+    links: z.array(LinkSchema).optional(),
+  })
+  .catchall(z.any());
+export type PurchaseOptionsLookupVariantSeller = z.infer<
+  typeof PurchaseOptionsLookupVariantSellerSchema
+>;
+
+export const PurchaseOptionsLookupVariantSchema = z
   .object({
     id: z.string(),
     sku: z.string().optional(),
-    barcodes: z.array(FulfillmentLookupVariantBarcodeSchema).optional(),
+    barcodes: z.array(PurchaseOptionsLookupVariantBarcodeSchema).optional(),
     handle: z.string().optional(),
     title: z.string(),
     description: DescriptionSchema,
@@ -1465,26 +1533,16 @@ export const FulfillmentLookupVariantSchema = z
     rating: RatingSchema.optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.any()).optional(),
-    seller: FulfillmentLookupVariantSellerSchema.optional(),
+    seller: PurchaseOptionsLookupVariantSellerSchema.optional(),
     inputs: z.array(InputCorrelationSchema).min(1),
-    fulfillment: CatalogFulfillmentSchema.optional(),
+    purchase_options: z.array(PurchaseOptionSchema).min(1).optional(),
   })
   .catchall(z.any());
-export type FulfillmentLookupVariant = z.infer<
-  typeof FulfillmentLookupVariantSchema
+export type PurchaseOptionsLookupVariant = z.infer<
+  typeof PurchaseOptionsLookupVariantSchema
 >;
 
-export const OptionValueSchema = z
-  .object({ id: z.string().optional(), label: z.string() })
-  .catchall(z.any());
-export type OptionValue = z.infer<typeof OptionValueSchema>;
-
-export const ProductOptionSchema = z
-  .object({ name: z.string(), values: z.array(OptionValueSchema).min(1) })
-  .catchall(z.any());
-export type ProductOption = z.infer<typeof ProductOptionSchema>;
-
-export const FulfillmentLookupProductSchema = z
+export const PurchaseOptionsLookupProductSchema = z
   .object({
     id: z.string(),
     handle: z.string().optional(),
@@ -1496,23 +1554,23 @@ export const FulfillmentLookupProductSchema = z
     list_price_range: PriceRangeSchema.optional(),
     media: z.array(MediaSchema).optional(),
     options: z.array(ProductOptionSchema).optional(),
-    variants: z.array(FulfillmentLookupVariantSchema).min(1),
+    variants: z.array(PurchaseOptionsLookupVariantSchema).min(1),
     rating: RatingSchema.optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.any()).optional(),
   })
   .catchall(z.any());
-export type FulfillmentLookupProduct = z.infer<
-  typeof FulfillmentLookupProductSchema
+export type PurchaseOptionsLookupProduct = z.infer<
+  typeof PurchaseOptionsLookupProductSchema
 >;
 
 export const CatalogLookupResponseSchema = z
   .object({
     ucp: ResponseCatalogSchema,
-    products: z.array(FulfillmentLookupProductSchema),
+    products: z.array(PurchaseOptionsLookupProductSchema),
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PurchaseOptionsPoliciesItemSchema).optional(),
     loyalty: LoyaltySchema.optional(),
   })
   .catchall(z.any());
@@ -1538,7 +1596,16 @@ export const CatalogSearchRequestSchema = z
   .catchall(z.any());
 export type CatalogSearchRequest = z.infer<typeof CatalogSearchRequestSchema>;
 
-export const FulfillmentProductSchema = z
+export const PaginationResponseSchema = z
+  .object({
+    cursor: z.string().optional(),
+    has_next_page: z.boolean(),
+    total_count: z.number().int().gte(0).optional(),
+  })
+  .catchall(z.any());
+export type PaginationResponse = z.infer<typeof PaginationResponseSchema>;
+
+export const PurchaseOptionsProductSchema = z
   .object({
     id: z.string(),
     handle: z.string().optional(),
@@ -1550,31 +1617,24 @@ export const FulfillmentProductSchema = z
     list_price_range: PriceRangeSchema.optional(),
     media: z.array(MediaSchema).optional(),
     options: z.array(ProductOptionSchema).optional(),
-    variants: z.array(FulfillmentVariantSchema).min(1),
+    variants: z.array(PurchaseOptionsVariantSchema).min(1),
     rating: RatingSchema.optional(),
     tags: z.array(z.string()).optional(),
     metadata: z.record(z.any()).optional(),
   })
   .catchall(z.any());
-export type FulfillmentProduct = z.infer<typeof FulfillmentProductSchema>;
-
-export const PaginationResponseSchema = z
-  .object({
-    cursor: z.string().optional(),
-    has_next_page: z.boolean(),
-    total_count: z.number().int().gte(0).optional(),
-  })
-  .catchall(z.any());
-export type PaginationResponse = z.infer<typeof PaginationResponseSchema>;
+export type PurchaseOptionsProduct = z.infer<
+  typeof PurchaseOptionsProductSchema
+>;
 
 export const CatalogSearchResponseSchema = z
   .object({
     ucp: ResponseCatalogSchema,
-    products: z.array(FulfillmentProductSchema),
+    products: z.array(PurchaseOptionsProductSchema),
     pagination: PaginationResponseSchema.optional(),
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PurchaseOptionsPoliciesItemSchema).optional(),
     loyalty: LoyaltySchema.optional(),
   })
   .catchall(z.any());
@@ -1605,6 +1665,7 @@ export const LocationDestinationSchema = z
     id: z.string(),
     name: z.string(),
     address: PostalAddressSchema.optional(),
+    media: z.array(MediaSchema).optional(),
   })
   .catchall(z.any());
 export type LocationDestination = z.infer<typeof LocationDestinationSchema>;
@@ -1898,12 +1959,11 @@ export const CheckoutSchema = z
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
     links: z.array(LinkSchema),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PurchaseOptionsPoliciesItemSchema).optional(),
     expires_at: z.string().datetime({ offset: true }).optional(),
     continue_url: z.string().url().optional(),
     payment: PaymentSchema.optional(),
     order: OrderConfirmationSchema.optional(),
-    cart_id: z.string().optional(),
     loyalty: LoyaltySchema.optional(),
     ap2: z
       .intersection(
@@ -1930,13 +1990,6 @@ export const CheckoutCompleteRequestSchema = z
     signals: SignalsSchema.optional(),
     attribution: AttributionSchema.optional(),
     payment: PaymentCompleteRequestSchema,
-    /** @deprecated Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload. */
-    cart_id: z
-      .string()
-      .optional()
-      .describe(
-        "@deprecated Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload."
-      ),
     ap2: Ap2WithCheckoutMandateCompleteRequestSchema.optional(),
   })
   .catchall(z.any());
@@ -2025,19 +2078,44 @@ export const PaymentCreateRequestSchema = z
   .catchall(z.any());
 export type PaymentCreateRequest = z.infer<typeof PaymentCreateRequestSchema>;
 
-export const CheckoutCreateRequestSchema = z
+export const CheckoutCreateRequestCartIdSchema = z
   .object({
-    line_items: z.array(LineItemCreateRequestSchema),
+    line_items: z.array(LineItemCreateRequestSchema).optional(),
+    cart_id: z.string(),
     buyer: BuyerSchema.optional(),
     context: ContextSchema.optional(),
     signals: SignalsSchema.optional(),
     attribution: AttributionSchema.optional(),
     payment: PaymentCreateRequestSchema.optional(),
-    cart_id: z.string().optional(),
     discounts: DiscountsObjectCreateRequestSchema.optional(),
     fulfillment: FulfillmentCreateRequestSchema.optional(),
   })
   .catchall(z.any());
+export type CheckoutCreateRequestCartId = z.infer<
+  typeof CheckoutCreateRequestCartIdSchema
+>;
+
+export const CheckoutCreateRequestLineItemsSchema = z
+  .object({
+    line_items: z.array(LineItemCreateRequestSchema),
+    cart_id: z.string().optional(),
+    buyer: BuyerSchema.optional(),
+    context: ContextSchema.optional(),
+    signals: SignalsSchema.optional(),
+    attribution: AttributionSchema.optional(),
+    payment: PaymentCreateRequestSchema.optional(),
+    discounts: DiscountsObjectCreateRequestSchema.optional(),
+    fulfillment: FulfillmentCreateRequestSchema.optional(),
+  })
+  .catchall(z.any());
+export type CheckoutCreateRequestLineItems = z.infer<
+  typeof CheckoutCreateRequestLineItemsSchema
+>;
+
+export const CheckoutCreateRequestSchema = z.union([
+  CheckoutCreateRequestLineItemsSchema,
+  CheckoutCreateRequestCartIdSchema,
+]);
 export type CheckoutCreateRequest = z.infer<typeof CheckoutCreateRequestSchema>;
 
 export const FulfillmentGroupUpdateRequestSchema = z
@@ -2173,6 +2251,11 @@ export const DailyHourSchema = z
   })
   .catchall(z.any());
 export type DailyHour = z.infer<typeof DailyHourSchema>;
+
+export const DateIntervalSchema = z
+  .object({ start_date: z.string().date(), end_date: z.string().date() })
+  .catchall(z.any());
+export type DateInterval = z.infer<typeof DateIntervalSchema>;
 
 export const DetailProductOptionSchema = z
   .object({ name: z.string(), values: z.array(DetailOptionValueSchema).min(1) })
@@ -2360,6 +2443,25 @@ export const ExpectationSchema = z
   .catchall(z.any());
 export type Expectation = z.infer<typeof ExpectationSchema>;
 
+export const FeeSchema = z
+  .object({
+    type: ReverseDomainNameSchema.optional(),
+    methods: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    amount: AmountSchema.optional(),
+    basis_points: z.number().int().gte(1).lte(10000).optional(),
+    max_amount: AmountSchema.optional(),
+    display_text: z.string().optional(),
+  })
+  .catchall(z.any());
+export type Fee = z.infer<typeof FeeSchema>;
+
 export const FulfillmentBusinessSchema = z
   .object({
     version: VersionSchema,
@@ -2373,6 +2475,79 @@ export const FulfillmentBusinessSchema = z
   })
   .catchall(z.any());
 export type FulfillmentBusiness = z.infer<typeof FulfillmentBusinessSchema>;
+
+export const FulfillmentDetailProductOptionSchema = z
+  .object({ name: z.string(), values: z.array(DetailOptionValueSchema).min(1) })
+  .catchall(z.any());
+export type FulfillmentDetailProductOption = z.infer<
+  typeof FulfillmentDetailProductOptionSchema
+>;
+
+export const FulfillmentVariantBarcodeSchema = z
+  .object({ type: z.string(), value: z.string() })
+  .catchall(z.any());
+export type FulfillmentVariantBarcode = z.infer<
+  typeof FulfillmentVariantBarcodeSchema
+>;
+
+export const FulfillmentVariantSellerSchema = z
+  .object({
+    name: z.string().optional(),
+    links: z.array(LinkSchema).optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentVariantSeller = z.infer<
+  typeof FulfillmentVariantSellerSchema
+>;
+
+export const FulfillmentVariantSchema = z
+  .object({
+    id: z.string(),
+    sku: z.string().optional(),
+    barcodes: z.array(FulfillmentVariantBarcodeSchema).optional(),
+    handle: z.string().optional(),
+    title: z.string(),
+    description: DescriptionSchema,
+    url: z.string().url().optional(),
+    categories: z.array(CategorySchema).optional(),
+    price: PriceSchema,
+    quantity_unit: QuantityUnitSchema.optional(),
+    list_price: PriceSchema.optional(),
+    unit_price: UnitPriceSchema.optional(),
+    availability: AvailabilitySchema.optional(),
+    options: z.array(SelectedOptionSchema).optional(),
+    media: z.array(MediaSchema).optional(),
+    rating: RatingSchema.optional(),
+    tags: z.array(z.string()).optional(),
+    metadata: z.record(z.any()).optional(),
+    seller: FulfillmentVariantSellerSchema.optional(),
+    fulfillment: CatalogFulfillmentSchema.optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentVariant = z.infer<typeof FulfillmentVariantSchema>;
+
+export const FulfillmentDetailProductSchema = z
+  .object({
+    id: z.string(),
+    handle: z.string().optional(),
+    title: z.string(),
+    description: DescriptionSchema,
+    url: z.string().url().optional(),
+    categories: z.array(CategorySchema).optional(),
+    price_range: PriceRangeSchema,
+    list_price_range: PriceRangeSchema.optional(),
+    media: z.array(MediaSchema).optional(),
+    options: z.array(FulfillmentDetailProductOptionSchema).optional(),
+    variants: z.array(FulfillmentVariantSchema).min(1),
+    rating: RatingSchema.optional(),
+    tags: z.array(z.string()).optional(),
+    metadata: z.record(z.any()).optional(),
+    selected: z.array(SelectedOptionSchema).optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentDetailProduct = z.infer<
+  typeof FulfillmentDetailProductSchema
+>;
 
 export const FulfillmentEventLineItemSchema = z
   .object({
@@ -2398,6 +2573,74 @@ export const FulfillmentEventSchema = z
   .catchall(z.any());
 export type FulfillmentEvent = z.infer<typeof FulfillmentEventSchema>;
 
+export const FulfillmentLookupVariantBarcodeSchema = z
+  .object({ type: z.string(), value: z.string() })
+  .catchall(z.any());
+export type FulfillmentLookupVariantBarcode = z.infer<
+  typeof FulfillmentLookupVariantBarcodeSchema
+>;
+
+export const FulfillmentLookupVariantSellerSchema = z
+  .object({
+    name: z.string().optional(),
+    links: z.array(LinkSchema).optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentLookupVariantSeller = z.infer<
+  typeof FulfillmentLookupVariantSellerSchema
+>;
+
+export const FulfillmentLookupVariantSchema = z
+  .object({
+    id: z.string(),
+    sku: z.string().optional(),
+    barcodes: z.array(FulfillmentLookupVariantBarcodeSchema).optional(),
+    handle: z.string().optional(),
+    title: z.string(),
+    description: DescriptionSchema,
+    url: z.string().url().optional(),
+    categories: z.array(CategorySchema).optional(),
+    price: PriceSchema,
+    quantity_unit: QuantityUnitSchema.optional(),
+    list_price: PriceSchema.optional(),
+    unit_price: UnitPriceSchema.optional(),
+    availability: AvailabilitySchema.optional(),
+    options: z.array(SelectedOptionSchema).optional(),
+    media: z.array(MediaSchema).optional(),
+    rating: RatingSchema.optional(),
+    tags: z.array(z.string()).optional(),
+    metadata: z.record(z.any()).optional(),
+    seller: FulfillmentLookupVariantSellerSchema.optional(),
+    inputs: z.array(InputCorrelationSchema).min(1),
+    fulfillment: CatalogFulfillmentSchema.optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentLookupVariant = z.infer<
+  typeof FulfillmentLookupVariantSchema
+>;
+
+export const FulfillmentLookupProductSchema = z
+  .object({
+    id: z.string(),
+    handle: z.string().optional(),
+    title: z.string(),
+    description: DescriptionSchema,
+    url: z.string().url().optional(),
+    categories: z.array(CategorySchema).optional(),
+    price_range: PriceRangeSchema,
+    list_price_range: PriceRangeSchema.optional(),
+    media: z.array(MediaSchema).optional(),
+    options: z.array(ProductOptionSchema).optional(),
+    variants: z.array(FulfillmentLookupVariantSchema).min(1),
+    rating: RatingSchema.optional(),
+    tags: z.array(z.string()).optional(),
+    metadata: z.record(z.any()).optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentLookupProduct = z.infer<
+  typeof FulfillmentLookupProductSchema
+>;
+
 export const PlatformFulfillmentConfigSchema = z
   .object({ supports_multi_group: z.boolean().optional() })
   .catchall(z.any());
@@ -2418,6 +2661,26 @@ export const FulfillmentPlatformSchema = z
   })
   .catchall(z.any());
 export type FulfillmentPlatform = z.infer<typeof FulfillmentPlatformSchema>;
+
+export const FulfillmentProductSchema = z
+  .object({
+    id: z.string(),
+    handle: z.string().optional(),
+    title: z.string(),
+    description: DescriptionSchema,
+    url: z.string().url().optional(),
+    categories: z.array(CategorySchema).optional(),
+    price_range: PriceRangeSchema,
+    list_price_range: PriceRangeSchema.optional(),
+    media: z.array(MediaSchema).optional(),
+    options: z.array(ProductOptionSchema).optional(),
+    variants: z.array(FulfillmentVariantSchema).min(1),
+    rating: RatingSchema.optional(),
+    tags: z.array(z.string()).optional(),
+    metadata: z.record(z.any()).optional(),
+  })
+  .catchall(z.any());
+export type FulfillmentProduct = z.infer<typeof FulfillmentProductSchema>;
 
 export const GeoSchema = z
   .object({
@@ -2562,6 +2825,7 @@ export const LocationSchema = z
     id: z.string(),
     name: z.string(),
     address: PostalAddressSchema.optional(),
+    media: z.array(MediaSchema).optional(),
     geo: GeoSchema.optional(),
     amenities: z.record(AmenityTypeSchema, AmenitySchema).optional(),
     hours: z.array(DailyHourSchema).optional(),
@@ -2666,6 +2930,7 @@ export const LookupLocationSchema = z
     id: z.string(),
     name: z.string(),
     address: PostalAddressSchema.optional(),
+    media: z.array(MediaSchema).optional(),
     geo: GeoSchema.optional(),
     amenities: z.record(AmenityTypeSchema, AmenitySchema).optional(),
     hours: z.array(DailyHourSchema).optional(),
@@ -2735,6 +3000,7 @@ export const LocationSummarySchema = z
     id: z.string(),
     name: z.string(),
     address: PostalAddressSchema.optional(),
+    media: z.array(MediaSchema).optional(),
   })
   .catchall(z.any());
 export type LocationSummary = z.infer<typeof LocationSummarySchema>;
@@ -2889,6 +3155,7 @@ export const OrderLineItemSchema = z
     totals: z.array(TotalSchema),
     status: z.enum(["processing", "partial", "fulfilled", "removed"]),
     parent_id: z.string().optional(),
+    purchase_option: PurchaseOptionSchema.optional(),
   })
   .catchall(z.any());
 export type OrderLineItem = z.infer<typeof OrderLineItemSchema>;
@@ -2928,7 +3195,7 @@ export const OrderSchema = z
     adjustments: z.array(AdjustmentSchema).optional(),
     currency: z.string(),
     totals: TotalsSchema,
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PurchaseOptionsPoliciesItemSchema).optional(),
     messages: z.array(MessageSchema).optional(),
     attribution: AttributionSchema.optional(),
     payment: OrderPaymentSchema.optional(),
@@ -3088,6 +3355,80 @@ export const PermalinkResponseSchema = z
   })
   .catchall(z.any());
 export type PermalinkResponse = z.infer<typeof PermalinkResponseSchema>;
+
+export const PolicySchema = z
+  .object({
+    type: ReverseDomainNameSchema,
+    description: DescriptionSchema,
+    applies_to: z.array(z.string()).optional(),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type Policy = z.infer<typeof PolicySchema>;
+
+export const PolicyReturnPoliciesItemBaseSchema = z
+  .object({
+    type: z
+      .string()
+      .regex(
+        new RegExp(
+          "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$"
+        )
+      ),
+    description: DescriptionSchema,
+    applies_to: z.array(z.string()).optional(),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type PolicyReturnPoliciesItemBase = z.infer<
+  typeof PolicyReturnPoliciesItemBaseSchema
+>;
+
+export const ReturnEligibilitySchema = z
+  .object({
+    type: z.string(),
+    duration: DurationSchema.optional(),
+    anchor: z.string().optional(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .catchall(z.any());
+export type ReturnEligibility = z.infer<typeof ReturnEligibilitySchema>;
+
+export const ReturnPolicySchema = z
+  .object({
+    type: z.literal("dev.ucp.shopping.policy.return"),
+    description: DescriptionSchema,
+    applies_to: z.array(z.string()).optional(),
+    url: z.string().url().optional(),
+    eligibility: ReturnEligibilitySchema.optional(),
+    supported_resolutions: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    methods: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    fees: z.array(FeeSchema).min(1).optional(),
+  })
+  .catchall(z.any());
+export type ReturnPolicy = z.infer<typeof ReturnPolicySchema>;
+
+export const PolicyReturnPoliciesItemSchema = z.union([
+  ReturnPolicySchema,
+  PolicyReturnPoliciesItemBaseSchema,
+]);
+export type PolicyReturnPoliciesItem = z.infer<
+  typeof PolicyReturnPoliciesItemSchema
+>;
 
 export const ProductSchema = z
   .object({
@@ -3339,6 +3680,49 @@ export const RequiresSchema = z
   .catchall(z.any());
 export type Requires = z.infer<typeof RequiresSchema>;
 
+export const ResponseBookingSchema = z
+  .object({
+    version: VersionSchema,
+    map_order: MapOrderSchema.optional(),
+    status: z.enum(["success", "error"]).optional(),
+    services: z
+      .record(ReverseDomainNameSchema, z.array(ServiceResponseSchema))
+      .optional(),
+    capabilities: z
+      .record(ReverseDomainNameSchema, z.array(CapabilityResponseSchema))
+      .optional(),
+    payment_handlers: z.record(
+      ReverseDomainNameSchema,
+      z.array(PaymentHandlerResponseSchema)
+    ),
+  })
+  .catchall(z.any());
+export type ResponseBooking = z.infer<typeof ResponseBookingSchema>;
+
+export const ReturnBodySchema = z
+  .object({
+    eligibility: ReturnEligibilitySchema.optional(),
+    supported_resolutions: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    methods: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    fees: z.array(FeeSchema).min(1).optional(),
+  })
+  .catchall(z.any());
+export type ReturnBody = z.infer<typeof ReturnBodySchema>;
+
 export const SearchFiltersSchema = z
   .object({
     categories: z.array(z.string()).optional(),
@@ -3403,3 +3787,10 @@ export const UnitSchema = z
   })
   .catchall(z.any());
 export type Unit = z.infer<typeof UnitSchema>;
+
+export const VariantPurchaseOptionsSchema = z
+  .object({ purchase_options: z.array(PurchaseOptionSchema).min(1).optional() })
+  .catchall(z.any());
+export type VariantPurchaseOptions = z.infer<
+  typeof VariantPurchaseOptionsSchema
+>;
