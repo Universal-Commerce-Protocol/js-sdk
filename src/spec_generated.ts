@@ -915,15 +915,87 @@ export const DescriptionSchema = z
   .catchall(z.any());
 export type Description = z.infer<typeof DescriptionSchema>;
 
-export const PolicySchema = z
+export const PoliciesItemBaseSchema = z
   .object({
-    type: ReverseDomainNameSchema,
+    type: z
+      .string()
+      .regex(
+        new RegExp(
+          "^[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9_-]*[a-z0-9_])?)+$"
+        )
+      ),
     description: DescriptionSchema,
     applies_to: z.array(z.string()).optional(),
     url: z.string().url().optional(),
   })
   .catchall(z.any());
-export type Policy = z.infer<typeof PolicySchema>;
+export type PoliciesItemBase = z.infer<typeof PoliciesItemBaseSchema>;
+
+export const FeeSchema = z
+  .object({
+    type: ReverseDomainNameSchema.optional(),
+    methods: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    amount: AmountSchema.optional(),
+    basis_points: z.number().int().gte(1).lte(10000).optional(),
+    max_amount: AmountSchema.optional(),
+    display_text: z.string().optional(),
+  })
+  .catchall(z.any());
+export type Fee = z.infer<typeof FeeSchema>;
+
+export const DurationSchema = z.string().duration();
+export type Duration = z.infer<typeof DurationSchema>;
+
+export const ReturnEligibilitySchema = z
+  .object({
+    type: z.string(),
+    duration: DurationSchema.optional(),
+    anchor: z.string().optional(),
+    expires_at: z.string().datetime({ offset: true }).optional(),
+  })
+  .catchall(z.any());
+export type ReturnEligibility = z.infer<typeof ReturnEligibilitySchema>;
+
+export const ReturnPolicySchema = z
+  .object({
+    type: z.literal("dev.ucp.shopping.policy.return"),
+    description: DescriptionSchema,
+    applies_to: z.array(z.string()).optional(),
+    url: z.string().url().optional(),
+    eligibility: ReturnEligibilitySchema.optional(),
+    supported_resolutions: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    methods: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    fees: z.array(FeeSchema).min(1).optional(),
+  })
+  .catchall(z.any());
+export type ReturnPolicy = z.infer<typeof ReturnPolicySchema>;
+
+export const PoliciesItemSchema = z.union([
+  ReturnPolicySchema,
+  PoliciesItemBaseSchema,
+]);
+export type PoliciesItem = z.infer<typeof PoliciesItemSchema>;
 
 export const ResponseCartSchema = z
   .object({
@@ -975,7 +1047,7 @@ export const CartSchema = z
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
     links: z.array(LinkSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PoliciesItemSchema).optional(),
     continue_url: z.string().url().optional(),
     expires_at: z.string().datetime({ offset: true }).optional(),
     loyalty: LoyaltySchema.optional(),
@@ -1404,7 +1476,7 @@ export const CatalogGetProductResponseSchema = z
     product: FulfillmentDetailProductSchema,
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PoliciesItemSchema).optional(),
     loyalty: LoyaltySchema.optional(),
   })
   .catchall(z.any());
@@ -1512,7 +1584,7 @@ export const CatalogLookupResponseSchema = z
     products: z.array(FulfillmentLookupProductSchema),
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PoliciesItemSchema).optional(),
     loyalty: LoyaltySchema.optional(),
   })
   .catchall(z.any());
@@ -1574,7 +1646,7 @@ export const CatalogSearchResponseSchema = z
     pagination: PaginationResponseSchema.optional(),
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PoliciesItemSchema).optional(),
     loyalty: LoyaltySchema.optional(),
   })
   .catchall(z.any());
@@ -1898,12 +1970,11 @@ export const CheckoutSchema = z
     actions: ActionsSchema.optional(),
     messages: z.array(MessageSchema).optional(),
     links: z.array(LinkSchema),
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PoliciesItemSchema).optional(),
     expires_at: z.string().datetime({ offset: true }).optional(),
     continue_url: z.string().url().optional(),
     payment: PaymentSchema.optional(),
     order: OrderConfirmationSchema.optional(),
-    cart_id: z.string().optional(),
     loyalty: LoyaltySchema.optional(),
     ap2: z
       .intersection(
@@ -1930,13 +2001,6 @@ export const CheckoutCompleteRequestSchema = z
     signals: SignalsSchema.optional(),
     attribution: AttributionSchema.optional(),
     payment: PaymentCompleteRequestSchema,
-    /** @deprecated Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload. */
-    cart_id: z
-      .string()
-      .optional()
-      .describe(
-        "@deprecated Cart ID to convert to checkout. Business MUST use cart contents (line_items, context, buyer) and MUST ignore overlapping fields in checkout payload."
-      ),
     ap2: Ap2WithCheckoutMandateCompleteRequestSchema.optional(),
   })
   .catchall(z.any());
@@ -2025,19 +2089,44 @@ export const PaymentCreateRequestSchema = z
   .catchall(z.any());
 export type PaymentCreateRequest = z.infer<typeof PaymentCreateRequestSchema>;
 
-export const CheckoutCreateRequestSchema = z
+export const CheckoutCreateRequestCartIdSchema = z
   .object({
-    line_items: z.array(LineItemCreateRequestSchema),
+    line_items: z.array(LineItemCreateRequestSchema).optional(),
+    cart_id: z.string(),
     buyer: BuyerSchema.optional(),
     context: ContextSchema.optional(),
     signals: SignalsSchema.optional(),
     attribution: AttributionSchema.optional(),
     payment: PaymentCreateRequestSchema.optional(),
-    cart_id: z.string().optional(),
     discounts: DiscountsObjectCreateRequestSchema.optional(),
     fulfillment: FulfillmentCreateRequestSchema.optional(),
   })
   .catchall(z.any());
+export type CheckoutCreateRequestCartId = z.infer<
+  typeof CheckoutCreateRequestCartIdSchema
+>;
+
+export const CheckoutCreateRequestLineItemsSchema = z
+  .object({
+    line_items: z.array(LineItemCreateRequestSchema),
+    cart_id: z.string().optional(),
+    buyer: BuyerSchema.optional(),
+    context: ContextSchema.optional(),
+    signals: SignalsSchema.optional(),
+    attribution: AttributionSchema.optional(),
+    payment: PaymentCreateRequestSchema.optional(),
+    discounts: DiscountsObjectCreateRequestSchema.optional(),
+    fulfillment: FulfillmentCreateRequestSchema.optional(),
+  })
+  .catchall(z.any());
+export type CheckoutCreateRequestLineItems = z.infer<
+  typeof CheckoutCreateRequestLineItemsSchema
+>;
+
+export const CheckoutCreateRequestSchema = z.union([
+  CheckoutCreateRequestLineItemsSchema,
+  CheckoutCreateRequestCartIdSchema,
+]);
 export type CheckoutCreateRequest = z.infer<typeof CheckoutCreateRequestSchema>;
 
 export const FulfillmentGroupUpdateRequestSchema = z
@@ -2173,6 +2262,11 @@ export const DailyHourSchema = z
   })
   .catchall(z.any());
 export type DailyHour = z.infer<typeof DailyHourSchema>;
+
+export const DateIntervalSchema = z
+  .object({ start_date: z.string().date(), end_date: z.string().date() })
+  .catchall(z.any());
+export type DateInterval = z.infer<typeof DateIntervalSchema>;
 
 export const DetailProductOptionSchema = z
   .object({ name: z.string(), values: z.array(DetailOptionValueSchema).min(1) })
@@ -2928,7 +3022,7 @@ export const OrderSchema = z
     adjustments: z.array(AdjustmentSchema).optional(),
     currency: z.string(),
     totals: TotalsSchema,
-    policies: z.array(PolicySchema).optional(),
+    policies: z.array(PoliciesItemSchema).optional(),
     messages: z.array(MessageSchema).optional(),
     attribution: AttributionSchema.optional(),
     payment: OrderPaymentSchema.optional(),
@@ -3088,6 +3182,16 @@ export const PermalinkResponseSchema = z
   })
   .catchall(z.any());
 export type PermalinkResponse = z.infer<typeof PermalinkResponseSchema>;
+
+export const PolicySchema = z
+  .object({
+    type: ReverseDomainNameSchema,
+    description: DescriptionSchema,
+    applies_to: z.array(z.string()).optional(),
+    url: z.string().url().optional(),
+  })
+  .catchall(z.any());
+export type Policy = z.infer<typeof PolicySchema>;
 
 export const ProductSchema = z
   .object({
@@ -3338,6 +3442,49 @@ export const RequiresSchema = z
   })
   .catchall(z.any());
 export type Requires = z.infer<typeof RequiresSchema>;
+
+export const ResponseBookingSchema = z
+  .object({
+    version: VersionSchema,
+    map_order: MapOrderSchema.optional(),
+    status: z.enum(["success", "error"]).optional(),
+    services: z
+      .record(ReverseDomainNameSchema, z.array(ServiceResponseSchema))
+      .optional(),
+    capabilities: z
+      .record(ReverseDomainNameSchema, z.array(CapabilityResponseSchema))
+      .optional(),
+    payment_handlers: z.record(
+      ReverseDomainNameSchema,
+      z.array(PaymentHandlerResponseSchema)
+    ),
+  })
+  .catchall(z.any());
+export type ResponseBooking = z.infer<typeof ResponseBookingSchema>;
+
+export const ReturnBodySchema = z
+  .object({
+    eligibility: ReturnEligibilitySchema.optional(),
+    supported_resolutions: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    methods: z
+      .array(z.string())
+      .min(1)
+      .refine(
+        (arr) => arr.every((item, i) => arr.indexOf(item) == i),
+        "All items must be unique!"
+      )
+      .optional(),
+    fees: z.array(FeeSchema).min(1).optional(),
+  })
+  .catchall(z.any());
+export type ReturnBody = z.infer<typeof ReturnBodySchema>;
 
 export const SearchFiltersSchema = z
   .object({

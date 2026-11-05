@@ -31,22 +31,35 @@ build UCP-compliant applications in JavaScript and TypeScript.
 
 ### UCP Version Compatibility
 
-Each version of the JavaScript SDK is generated against a specific version of the UCP schema:
+Starting with the `2026-10+` UCP specification releases, `@ucp-js/sdk` uses spec-aligned `YYYYMMDD.MINOR.PATCH` versioning on `release/YYYY-MM-DD` branches, while `main` tracks the `draft` UCP schema channel (`0.0.0-draft`, pinned in `ucp-lock.json`):
 
-| SDK Version | UCP Schema Version |
-| ----------- | ------------------ |
-| **`0.6.x`** | **`2026-08-25`**   |
-| `0.5.x`     | `2026-08-25`       |
-| `0.4.x`     | `2026-04-08`       |
-| `0.1.1`     | `2026-01-23`       |
-| `0.1.0`     | `2026-01-11`       |
+| SDK Version / Channel      | UCP Schema Version                       | npm Dist-Tag / Install Source                                  |
+| -------------------------- | ---------------------------------------- | -------------------------------------------------------------- |
+| `0.0.0-draft` (`main`)     | `draft` (`ucp@main` via `ucp-lock.json`) | Git-native (`github:Universal-Commerce-Protocol/js-sdk#<sha>`) |
+| **`YYYYMMDD.MINOR.PATCH`** | **`YYYY-MM-DD` (`>= 2026-10-01`)**       | **`latest` / `release-YYYY-MM-DD`**                            |
+| `0.5.x`                    | `2026-08-25`                             | Legacy `0.x` release                                           |
+| `0.4.x`                    | `2026-04-08`                             | Legacy `0.x` release                                           |
+| `0.1.1`                    | `2026-01-23`                             | Legacy `0.x` release                                           |
+| `0.1.0`                    | `2026-01-11`                             | Legacy `0.x` release                                           |
 
 ## Installation
 
-To install the SDK in your project, run:
+To install the latest published UCP specification release from npm:
 
 ```bash
 npm install @ucp-js/sdk
+```
+
+To pin your project to a specific UCP specification release track (`release/YYYY-MM-DD`):
+
+```bash
+npm install @ucp-js/sdk@release-YYYY-MM-DD
+```
+
+To install the `draft` schema channel directly from a commit SHA on `main` (which automatically compiles `dist/` via the package `prepare` script):
+
+```bash
+npm install github:Universal-Commerce-Protocol/js-sdk#<commit-sha>
 ```
 
 ## Usage
@@ -131,18 +144,25 @@ This project uses `npm` for package management, `typescript` for building, and t
 ### Generating Models
 
 The models are automatically generated from the JSON schemas in the
-[UCP Specification](https://ucp.dev).
+[UCP Specification](https://ucp.dev) and pinned via `ucp-lock.json`.
 
-Model generation via `ucp-schema generate-types` supports UCP release `2026-08-25` and later. To regenerate the models against a specific release version:
+To regenerate models deterministically from the commit pinned in `ucp-lock.json`:
 
 ```bash
-npm run generate -- 2026-08-25
+./generate_models.sh --from-lock
+```
+
+To advance `ucp-lock.json` and regenerate against the latest upstream `draft` (`ucp@main`) or a specific release branch (`release/YYYY-MM-DD`):
+
+```bash
+./generate_models.sh draft
+./generate_models.sh 2026-08-25
 ```
 
 Alternatively, you can point to a local directory containing the UCP repository or schemas:
 
 ```bash
-npm run generate -- /path/to/ucp
+./generate_models.sh /path/to/ucp
 ```
 
 ### Building

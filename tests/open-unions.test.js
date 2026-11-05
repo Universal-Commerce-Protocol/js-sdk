@@ -601,21 +601,9 @@ test("MediaSchema preserves forward-compatible unknown media types and extra pro
   assert.deepEqual(parsedProduct.data.media[1], audioMedia);
 });
 
-test("CheckoutCompleteRequestSchema marks cart_id as @deprecated while keeping runtime validation optional string", () => {
-  assert.equal(
-    typeof CheckoutCompleteRequestSchema.shape.cart_id.description,
-    "string"
-  );
-  assert.ok(
-    CheckoutCompleteRequestSchema.shape.cart_id.description.startsWith(
-      "@deprecated"
-    )
-  );
-  assert.equal(
-    CheckoutCreateRequestSchema.shape.cart_id.description,
-    undefined
-  );
-  assert.equal(CheckoutSchema.shape.cart_id.description, undefined);
+test("CheckoutCompleteRequestSchema omits deprecated cart_id on draft while preserving unknown fields", () => {
+  assert.equal(CheckoutCompleteRequestSchema.shape.cart_id, undefined);
+  assert.equal(CheckoutSchema.shape.cart_id, undefined);
 
   const omittedCartId = CheckoutCompleteRequestSchema.safeParse({
     payment: { instruments: [] },
@@ -628,15 +616,9 @@ test("CheckoutCompleteRequestSchema marks cart_id as @deprecated while keeping r
   });
   assert.ok(stringCartId.success);
   assert.equal(stringCartId.data.cart_id, "cart_legacy_123");
-
-  const numericCartId = CheckoutCompleteRequestSchema.safeParse({
-    payment: { instruments: [] },
-    cart_id: 123,
-  });
-  assert.equal(numericCartId.success, false);
 });
 
-test("CheckoutCreateRequestSchema enforces line_items and quantity >= 1 while preserving third-party extension fields", () => {
+test("CheckoutCreateRequestSchema accepts line_items or cart_id and enforces quantity >= 1 while preserving third-party extension fields", () => {
   const validCreate = {
     line_items: [
       {
@@ -656,7 +638,13 @@ test("CheckoutCreateRequestSchema enforces line_items and quantity >= 1 while pr
 
   assert.equal(
     CheckoutCreateRequestSchema.safeParse({
-      cart_id: "cart_missing_items",
+      cart_id: "cart_only_create",
+    }).success,
+    true
+  );
+  assert.equal(
+    CheckoutCreateRequestSchema.safeParse({
+      "com.example.channel": "missing_both_line_items_and_cart_id",
     }).success,
     false
   );

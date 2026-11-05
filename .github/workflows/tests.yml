@@ -16,17 +16,15 @@ name: Tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, "release/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "release/**"]
 
 permissions:
   contents: read
 
 jobs:
-  # Job 1: run the constraint/injector unit tests (#34/#37) that live in
-  # tests/*.test.js. `npm test` is wired in package.json but no existing
-  # workflow runs it, so a real regression in the committed models ships green.
+  # Job 1: run the unit tests in tests/*.test.js.
   test:
     name: Unit tests
     runs-on: ubuntu-latest
@@ -48,13 +46,7 @@ jobs:
         run: npm test
 
   # Job 2: assert the committed models equal a fresh regeneration from the
-  # pinned UCP spec release the 0.6.x line targets (README compatibility table:
-  # 0.6.x -> 2026-08-25). Catches both a broken generation pipeline (an injector
-  # regressed but the committed models were not updated) and a forgotten
-  # regeneration (committed models stale versus the pinned spec). Does not
-  # auto-commit: the committed-artifact flow stays the release path (the
-  # auto-commit approach in the closed #10 was not the direction maintainers
-  # wanted). This is a check, not a generator.
+  # commit-pinned UCP spec SHA recorded in ucp-lock.json.
   model-drift:
     name: Committed models match regeneration
     runs-on: ubuntu-latest
@@ -64,18 +56,29 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Checkout the pinned UCP spec (release/2026-08-25)
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: Universal-Commerce-Protocol/ucp
-          ref: release/2026-08-25
-          path: .ucp-spec
-          persist-credentials: false
-
       - name: Install Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "lts/*"
+
+      - name: Read ucp-lock.json
+        id: lock
+        run: |
+          set -euo pipefail
+          UCP_SHA="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_sha")"
+          UCP_SCHEMA_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_schema_version")"
+          {
+            echo "ucp_sha=${UCP_SHA}"
+            echo "ucp_schema_version=${UCP_SCHEMA_VERSION}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout the pinned UCP spec
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: Universal-Commerce-Protocol/ucp
+          ref: ${{ steps.lock.outputs.ucp_sha }}
+          path: .ucp-spec
+          persist-credentials: false
 
       # pre-commit/action bootstraps pre-commit via pip, so Python must be
       # present (matches linter.yml, which pairs setup-python with the hook).
@@ -90,42 +93,37 @@ jobs:
         run: npm ci
 
       - name: Install ucp-schema
+        env:
+          UCP_SCHEMA_VERSION: ${{ steps.lock.outputs.ucp_schema_version }}
         run: |
+          set -euo pipefail
           TMP_BIN="$(mktemp -d)"
           curl -fsSL -o "$TMP_BIN/ucp-schema-linux-x86_64" \
-            "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v2.0.0/ucp-schema-linux-x86_64"
+            "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}/ucp-schema-linux-x86_64"
           curl -fsSL -o "$TMP_BIN/SHA256SUMS" \
-            "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v2.0.0/SHA256SUMS"
+            "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}/SHA256SUMS"
           (cd "$TMP_BIN" && sha256sum -c --ignore-missing SHA256SUMS)
           mkdir -p "$HOME/.local/bin"
           install -m 0755 "$TMP_BIN/ucp-schema-linux-x86_64" "$HOME/.local/bin/ucp-schema"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           rm -rf "$TMP_BIN"
 
-      # generate_models.sh auto-detects the source/ layout that
-      # release/2026-08-25 ships and writes src/spec_generated.ts in place.
       - name: Regenerate models from the pinned spec
-        run: ./generate_models.sh .ucp-spec
+        run: ./generate_models.sh --from-lock --spec-dir .ucp-spec
 
-      # Normalize exactly as the committed models were normalized, by reusing
-      # the repo's own pinned pre-commit prettier hook (mirrors-prettier rev in
-      # .pre-commit-config.yaml). Single source of truth: no second prettier
-      # version to keep in sync. Ensures consistent formatting for the
-      # byte-for-byte comparison below. Prettier exits
-      # non-zero when it rewrites the file, so let the diff step be the gate.
       - name: Normalize (prettier, via the repo's pinned pre-commit hook)
         uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
         continue-on-error: true
         with:
-          extra_args: prettier --files src/spec_generated.ts
+          extra_args: prettier --files src/spec_generated.ts ucp-lock.json
         env:
           # workaround for pre-commit/action not being updated to node24
           FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
       - name: Fail if committed models differ from regeneration
         run: |
-          if ! git diff --exit-code -- src/spec_generated.ts; then
-            echo "::error::src/spec_generated.ts is out of sync with the pinned UCP spec (release/2026-08-25). Regenerate with 'npm run generate -- /path/to/ucp' (ucp checked out at release/2026-08-25), run pre-commit to format, and commit src/spec_generated.ts."
+          if ! git diff --exit-code -- src/spec_generated.ts ucp-lock.json; then
+            echo "::error::src/spec_generated.ts or ucp-lock.json is out of sync with the commit pinned in ucp-lock.json. Regenerate with './generate_models.sh --from-lock', run pre-commit to format, and commit src/spec_generated.ts."
             exit 1
           fi
-          echo "Committed models match regeneration from the pinned spec."
+          echo "Committed models match regeneration from ucp-lock.json."
