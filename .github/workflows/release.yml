@@ -54,8 +54,8 @@ jobs:
           MINOR="${BASH_REMATCH[4]}"
           PATCH="${BASH_REMATCH[5]}"
           YYYYMMDD="${YYYY}${MM}${DD}"
-          if (( 10#$YYYYMMDD < 20261001 )); then
-            echo "::error::CalVer release epoch $YYYYMMDD must be >= 20261001"
+          if (( 10#$YYYYMMDD < 20260825 )); then
+            echo "::error::CalVer release epoch $YYYYMMDD must be >= 20260825"
             exit 1
           fi
           EXPECTED_VERSION="${YYYYMMDD}.${MINOR}.${PATCH}"

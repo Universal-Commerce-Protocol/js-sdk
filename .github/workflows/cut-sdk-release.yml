@@ -18,7 +18,7 @@ on:
   workflow_dispatch:
     inputs:
       spec_version:
-        description: "UCP specification version date (YYYY-MM-DD, >= 2026-10-01)"
+        description: "UCP specification version date (YYYY-MM-DD, >= 2026-08-25)"
         required: true
         type: string
       bump:
@@ -83,8 +83,8 @@ jobs:
           MM="${BASH_REMATCH[2]}"
           DD="${BASH_REMATCH[3]}"
           YYYYMMDD="${YYYY}${MM}${DD}"
-          if (( 10#$YYYYMMDD < 20261001 )); then
-            echo "::error::spec_version '$SPEC_VERSION' must be >= 2026-10-01"
+          if (( 10#$YYYYMMDD < 20260825 )); then
+            echo "::error::spec_version '$SPEC_VERSION' must be >= 2026-08-25"
             exit 1
           fi
 
