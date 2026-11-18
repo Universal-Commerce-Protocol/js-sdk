@@ -125,6 +125,14 @@ jobs:
 
           OLD_SHA="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_sha")"
           UCP_SCHEMA_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_schema_version")"
+          if [[ ! "$OLD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ucp-lock.json ucp_sha '${OLD_SHA}' is not a valid 40-character lowercase hex SHA"
+            exit 1
+          fi
+          if [[ -z "$UCP_SCHEMA_VERSION" || "$UCP_SCHEMA_VERSION" == "undefined" ]]; then
+            echo "::error::ucp-lock.json ucp_schema_version is missing or invalid"
+            exit 1
+          fi
 
           rm -rf "$RUNNER_TEMP/ucp-spec"
           git clone https://github.com/Universal-Commerce-Protocol/ucp.git "$RUNNER_TEMP/ucp-spec"
@@ -160,6 +168,19 @@ jobs:
             if ! git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$OLD_SHA" "$NEW_SHA"; then
               echo "::notice::Incoming ucp_sha ${NEW_SHA} is not a descendant of locked ${OLD_SHA}; skipping out-of-order dispatch."
               exit 0
+            fi
+            ROLLING_REF="refs/remotes/origin/chore/sync-models-${SAFE_TARGET}"
+            if git show-ref --verify --quiet "$ROLLING_REF"; then
+              ROLLING_LOCK="$(git show "${ROLLING_REF}:ucp-lock.json" 2>/dev/null || true)"
+              if [[ -n "$ROLLING_LOCK" ]]; then
+                ROLLING_SHA="$(LOCK_JSON="$ROLLING_LOCK" node -p "JSON.parse(process.env.LOCK_JSON).ucp_sha || ''" 2>/dev/null || true)"
+                if [[ "$ROLLING_SHA" =~ ^[0-9a-f]{40}$ ]] && git -C "$RUNNER_TEMP/ucp-spec" cat-file -e "${ROLLING_SHA}^{commit}" 2>/dev/null; then
+                  if git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$NEW_SHA" "$ROLLING_SHA"; then
+                    echo "::notice::Incoming ucp_sha ${NEW_SHA} is already covered by rolling branch chore/sync-models-${SAFE_TARGET} (${ROLLING_SHA}); skipping."
+                    exit 0
+                  fi
+                fi
+              fi
             fi
           fi
 
@@ -243,9 +264,18 @@ jobs:
           - Upstream compare: https://github.com/Universal-Commerce-Protocol/ucp/compare/${OLD_SHA}...${NEW_SHA}"
 
           BOT_NAME="${APP_SLUG:-ucp-automation}[bot]"
+          BOT_ID="$(gh api "/users/${BOT_NAME}" --jq .id)"
+          if [[ ! "$BOT_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Failed to resolve numeric GitHub user ID for ${BOT_NAME}"
+            exit 1
+          fi
           git config user.name "$BOT_NAME"
-          git config user.email "${BOT_NAME}@users.noreply.github.com"
+          git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
           git add -- ucp-lock.json src/spec_generated.ts
+          if git diff --cached --quiet; then
+            echo "No staged changes to commit; exiting cleanly."
+            exit 0
+          fi
           git commit -m "$PR_TITLE"
           git push --force "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "HEAD:refs/heads/${PR_BRANCH}"
 
