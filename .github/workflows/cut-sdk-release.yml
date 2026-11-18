@@ -22,7 +22,7 @@ on:
         required: true
         type: string
       bump:
-        description: "Release version increment type"
+        description: "Release version increment type (or publish-existing to tag/release an untagged branch HEAD)"
         required: true
         type: choice
         default: "initial"
@@ -30,6 +30,7 @@ on:
           - initial
           - patch
           - minor
+          - publish-existing
       ucp_sha:
         description: "Optional 40-char commit SHA on ucp release/<spec_version> (defaults to branch HEAD)"
         required: false
@@ -52,6 +53,7 @@ jobs:
   cut-release:
     name: Cut and tag SDK release
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout js-sdk
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -63,12 +65,19 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "lts/*"
+          package-manager-cache: false
+
+      - name: Install Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.x"
 
       - name: Validate inputs, clone UCP spec, and prepare release branch
         env:
           SPEC_VERSION: ${{ inputs.spec_version }}
           BUMP: ${{ inputs.bump }}
           INPUT_UCP_SHA: ${{ inputs.ucp_sha }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
           set -euo pipefail
           if [[ ! "$SPEC_VERSION" =~ ^([0-9]{4})-([0-9]{2})-([0-9]{2})$ ]]; then
@@ -78,6 +87,10 @@ jobs:
           YYYY="${BASH_REMATCH[1]}"
           MM="${BASH_REMATCH[2]}"
           DD="${BASH_REMATCH[3]}"
+          if ! YYYY="$YYYY" MM="$MM" DD="$DD" node -e 'const y=+process.env.YYYY,m=+process.env.MM,d=+process.env.DD,dt=new Date(Date.UTC(y,m-1,d)); process.exit(dt.getUTCFullYear()===y && dt.getUTCMonth()+1===m && dt.getUTCDate()===d ? 0 : 1)'; then
+            echo "::error::spec_version '$SPEC_VERSION' is not a valid calendar date"
+            exit 1
+          fi
           YYYYMMDD="${YYYY}${MM}${DD}"
           if (( 10#$YYYYMMDD < 20260825 )); then
             echo "::error::spec_version '$SPEC_VERSION' must be >= 2026-08-25"
@@ -85,7 +98,7 @@ jobs:
           fi
 
           rm -rf "$RUNNER_TEMP/ucp-spec"
-          git clone https://github.com/Universal-Commerce-Protocol/ucp.git "$RUNNER_TEMP/ucp-spec"
+          git clone --filter=blob:none --no-checkout https://github.com/Universal-Commerce-Protocol/ucp.git "$RUNNER_TEMP/ucp-spec"
           if ! git -C "$RUNNER_TEMP/ucp-spec" show-ref --verify --quiet "refs/remotes/origin/release/${SPEC_VERSION}"; then
             echo "::error::Upstream branch release/${SPEC_VERSION} does not exist in Universal-Commerce-Protocol/ucp"
             exit 1
@@ -98,6 +111,10 @@ jobs:
               echo "::error::ucp_sha '$INPUT_UCP_SHA' must be a 40-character lowercase hex SHA"
               exit 1
             fi
+            if ! git -C "$RUNNER_TEMP/ucp-spec" cat-file -e "${INPUT_UCP_SHA}^{commit}" 2>/dev/null; then
+              echo "::error::ucp_sha '$INPUT_UCP_SHA' does not exist in Universal-Commerce-Protocol/ucp"
+              exit 1
+            fi
             if ! git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$INPUT_UCP_SHA" "origin/release/${SPEC_VERSION}"; then
               echo "::error::ucp_sha '$INPUT_UCP_SHA' is not an ancestor of origin/release/${SPEC_VERSION}"
               exit 1
@@ -108,11 +125,34 @@ jobs:
 
           if [[ "$BUMP" == "initial" ]]; then
             if git show-ref --verify --quiet "refs/remotes/origin/release/${SPEC_VERSION}"; then
-              echo "::error::Branch release/${SPEC_VERSION} already exists; use bump=patch or bump=minor"
+              echo "::error::Branch release/${SPEC_VERSION} already exists; use bump=patch, bump=minor, or bump=publish-existing"
               exit 1
             fi
             git checkout -B "release/${SPEC_VERSION}" origin/main
             NEW_VERSION="${YYYYMMDD}.0.0"
+          elif [[ "$BUMP" == "publish-existing" ]]; then
+            if [[ "$PUBLISH_RELEASE" != "true" ]]; then
+              echo "::error::bump=publish-existing requires publish_release=true"
+              exit 1
+            fi
+            if ! git show-ref --verify --quiet "refs/remotes/origin/release/${SPEC_VERSION}"; then
+              echo "::error::Branch release/${SPEC_VERSION} does not exist; use bump=initial first"
+              exit 1
+            fi
+            git checkout -B "release/${SPEC_VERSION}" "origin/release/${SPEC_VERSION}"
+            CURRENT_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+            if [[ ! "$CURRENT_VERSION" =~ ^${YYYYMMDD}\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::Current package.json version '$CURRENT_VERSION' does not match canonical ${YYYYMMDD}.MINOR.PATCH"
+              exit 1
+            fi
+            LOCK_CHANNEL="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).channel")"
+            LOCK_REF="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_ref")"
+            LOCK_SHA="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_sha")"
+            if [[ "$LOCK_CHANNEL" != "release" || "$LOCK_REF" != "release/${SPEC_VERSION}" || "$LOCK_SHA" != "$RESOLVED_UCP_SHA" ]]; then
+              echo "::error::ucp-lock.json on release/${SPEC_VERSION} (channel='${LOCK_CHANNEL}', ucp_ref='${LOCK_REF}', ucp_sha='${LOCK_SHA}') does not match expected release/${SPEC_VERSION} at '${RESOLVED_UCP_SHA}'"
+              exit 1
+            fi
+            NEW_VERSION="$CURRENT_VERSION"
           else
             if ! git show-ref --verify --quiet "refs/remotes/origin/release/${SPEC_VERSION}"; then
               echo "::error::Branch release/${SPEC_VERSION} does not exist; use bump=initial first"
@@ -120,8 +160,8 @@ jobs:
             fi
             git checkout -B "release/${SPEC_VERSION}" "origin/release/${SPEC_VERSION}"
             CURRENT_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
-            if [[ ! "$CURRENT_VERSION" =~ ^${YYYYMMDD}\.([0-9]+)\.([0-9]+)$ ]]; then
-              echo "::error::Current package.json version '$CURRENT_VERSION' does not match ${YYYYMMDD}.MINOR.PATCH"
+            if [[ ! "$CURRENT_VERSION" =~ ^${YYYYMMDD}\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+              echo "::error::Current package.json version '$CURRENT_VERSION' does not match canonical ${YYYYMMDD}.MINOR.PATCH"
               exit 1
             fi
             MINOR="${BASH_REMATCH[1]}"
@@ -147,7 +187,12 @@ jobs:
           fi
 
           UCP_SCHEMA_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_schema_version")"
+          if [[ ! "$UCP_SCHEMA_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::ucp-lock.json ucp_schema_version '$UCP_SCHEMA_VERSION' must be a canonical semantic version"
+            exit 1
+          fi
           {
+            echo "YYYYMMDD=${YYYYMMDD}"
             echo "NEW_VERSION=${NEW_VERSION}"
             echo "UCP_SCHEMA_VERSION=${UCP_SCHEMA_VERSION}"
           } >> "$GITHUB_ENV"
@@ -159,27 +204,51 @@ jobs:
           set -euo pipefail
           npm ci
           TMP_BIN="$(mktemp -d)"
-          curl -fsSL -o "$TMP_BIN/ucp-schema-linux-x86_64" \
+          trap 'rm -rf "$TMP_BIN"' EXIT
+          curl -fsSL --retry 3 -o "$TMP_BIN/ucp-schema-linux-x86_64" \
             "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}/ucp-schema-linux-x86_64"
-          curl -fsSL -o "$TMP_BIN/SHA256SUMS" \
+          curl -fsSL --retry 3 -o "$TMP_BIN/SHA256SUMS" \
             "https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}/SHA256SUMS"
           (cd "$TMP_BIN" && sha256sum -c --ignore-missing SHA256SUMS)
           mkdir -p "$HOME/.local/bin"
           install -m 0755 "$TMP_BIN/ucp-schema-linux-x86_64" "$HOME/.local/bin/ucp-schema"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-          rm -rf "$TMP_BIN"
 
-      - name: Regenerate models, update version, and verify build
+      - name: Regenerate or verify models and update version
         env:
+          BUMP: ${{ inputs.bump }}
           SPEC_VERSION: ${{ inputs.spec_version }}
           NEW_VERSION: ${{ env.NEW_VERSION }}
         run: |
           set -euo pipefail
-          ./generate_models.sh "$RUNNER_TEMP/ucp-spec" --channel release --ref "release/${SPEC_VERSION}" --write-lock
-          npm version "$NEW_VERSION" --no-git-tag-version
-          ./node_modules/.bin/prettier --write package.json ucp-lock.json
-          npm test
+          if [[ "$BUMP" == "publish-existing" ]]; then
+            ./generate_models.sh --from-lock --spec-dir "$RUNNER_TEMP/ucp-spec"
+          else
+            ./generate_models.sh "$RUNNER_TEMP/ucp-spec" --spec-dir "$RUNNER_TEMP/ucp-spec" --channel release --ref "release/${SPEC_VERSION}" --write-lock
+            npm version "$NEW_VERSION" --no-git-tag-version
+          fi
+
+      - name: Normalize with repository pre-commit Prettier hook
+        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+        continue-on-error: true
+        with:
+          extra_args: prettier --files src/spec_generated.ts package.json ucp-lock.json
+        env:
+          FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+      - name: Build and run unit tests
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          set -euo pipefail
+          ./node_modules/.bin/prettier --check package.json ucp-lock.json
+          if [[ "$BUMP" == "publish-existing" ]] && [[ -n "$(git status --porcelain -- src/spec_generated.ts package.json ucp-lock.json)" ]]; then
+            git diff -- src/spec_generated.ts package.json ucp-lock.json || true
+            echo "::error::Existing release branch models or manifest differ from lockfile regeneration"
+            exit 1
+          fi
           npm run build
+          npm test
 
       - name: Generate GitHub App Token
         id: app-token
@@ -194,7 +263,9 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
           REPOSITORY: ${{ github.repository }}
+          BUMP: ${{ inputs.bump }}
           SPEC_VERSION: ${{ inputs.spec_version }}
+          YYYYMMDD: ${{ env.YYYYMMDD }}
           NEW_VERSION: ${{ env.NEW_VERSION }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
@@ -218,16 +289,41 @@ jobs:
           fi
           git config user.name "$BOT_NAME"
           git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
-          git add -- ucp-lock.json package.json package-lock.json src/spec_generated.ts
-          git commit -m "chore(release): v${NEW_VERSION}"
-          git push "$REMOTE_URL" "HEAD:refs/heads/release/${SPEC_VERSION}"
+
+          if [[ "$BUMP" != "publish-existing" ]]; then
+            git add -- ucp-lock.json package.json package-lock.json src/spec_generated.ts
+            if git diff --cached --quiet; then
+              echo "::error::Expected staged release changes for bump=${BUMP}, but git index had zero diff"
+              exit 1
+            fi
+            git commit -m "chore(release): v${NEW_VERSION}"
+            git push "$REMOTE_URL" "HEAD:refs/heads/release/${SPEC_VERSION}"
+          fi
 
           if [[ "$PUBLISH_RELEASE" == "true" ]]; then
+            RELEASE_TAGS="$(gh api --paginate "repos/${REPOSITORY}/releases?per_page=100" --jq '.[] | select((.draft | not) and (.prerelease | not)) | .tag_name')"
+            LATEST_RELEASE_EPOCH="0"
+            while IFS= read -r tag; do
+              if [[ "$tag" =~ ^v([0-9]{8})\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+                TAG_EPOCH="${BASH_REMATCH[1]}"
+                if (( 10#$TAG_EPOCH > 10#$LATEST_RELEASE_EPOCH )); then
+                  LATEST_RELEASE_EPOCH="$TAG_EPOCH"
+                fi
+              fi
+            done <<< "$RELEASE_TAGS"
+
+            if (( 10#$YYYYMMDD < 10#$LATEST_RELEASE_EPOCH )); then
+              MAKE_LATEST_FLAG="--latest=false"
+            else
+              MAKE_LATEST_FLAG="--latest"
+            fi
+
             git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
             git push "$REMOTE_URL" "refs/tags/v${NEW_VERSION}"
             gh release create "v${NEW_VERSION}" \
               --repo "$REPOSITORY" \
-              --target "release/${SPEC_VERSION}" \
+              --verify-tag \
+              "$MAKE_LATEST_FLAG" \
               --title "v${NEW_VERSION}" \
               --generate-notes
           fi
