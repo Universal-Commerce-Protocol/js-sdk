@@ -241,6 +241,20 @@ jobs:
           fi
 
           OPEN_ROLLING_PR="$(gh pr list --repo "$REPOSITORY" --state open --head "$ROLLING_BRANCH" --base "$TARGET_BRANCH" --json number --jq '.[0].number // empty')"
+          ROLLING_SHA=""
+          ROLLING_COVERED_BY_NEW="false"
+          if git show-ref --verify --quiet "$ROLLING_REF"; then
+            ROLLING_LOCK="$(git show "${ROLLING_REF}:ucp-lock.json" 2>/dev/null || true)"
+            if [[ -n "$ROLLING_LOCK" ]]; then
+              CANDIDATE_ROLLING_SHA="$(LOCK_JSON="$ROLLING_LOCK" node -p "JSON.parse(process.env.LOCK_JSON).ucp_sha || ''" 2>/dev/null || true)"
+              if [[ "$CANDIDATE_ROLLING_SHA" =~ ^[0-9a-f]{40}$ ]] && git -C "$RUNNER_TEMP/ucp-spec" cat-file -e "${CANDIDATE_ROLLING_SHA}^{commit}" 2>/dev/null; then
+                ROLLING_SHA="$CANDIDATE_ROLLING_SHA"
+                if git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$ROLLING_SHA" "$NEW_SHA"; then
+                  ROLLING_COVERED_BY_NEW="true"
+                fi
+              fi
+            fi
+          fi
 
           if [[ -n "${GITHUB_ENV:-}" ]]; then
             {
@@ -252,12 +266,13 @@ jobs:
               echo "NEW_SHA=${NEW_SHA}"
               echo "UCP_SCHEMA_VERSION=${UCP_SCHEMA_VERSION}"
               echo "OPEN_ROLLING_PR=${OPEN_ROLLING_PR}"
+              echo "ROLLING_COVERED_BY_NEW=${ROLLING_COVERED_BY_NEW}"
             } >> "$GITHUB_ENV"
           fi
 
           if [[ "$OLD_SHA" == "$NEW_SHA" && "${FORCE_RESYNC:-false}" != "true" ]]; then
             echo "ucp-lock.json already pinned to ${NEW_SHA}; nothing to sync."
-            if [[ -n "$OPEN_ROLLING_PR" && -n "${GITHUB_ENV:-}" ]]; then
+            if [[ -n "$OPEN_ROLLING_PR" && "$ROLLING_COVERED_BY_NEW" == "true" && -n "${GITHUB_ENV:-}" ]]; then
               echo "CLOSE_STALE_PR=true" >> "$GITHUB_ENV"
             fi
             exit 0
@@ -274,16 +289,10 @@ jobs:
               exit "$ANCESTOR_RC"
             fi
 
-            if [[ -n "$OPEN_ROLLING_PR" ]] && git show-ref --verify --quiet "$ROLLING_REF" && git merge-base --is-ancestor "origin/${TARGET_BRANCH}" "$ROLLING_REF"; then
-              ROLLING_LOCK="$(git show "${ROLLING_REF}:ucp-lock.json" 2>/dev/null || true)"
-              if [[ -n "$ROLLING_LOCK" ]]; then
-                ROLLING_SHA="$(LOCK_JSON="$ROLLING_LOCK" node -p "JSON.parse(process.env.LOCK_JSON).ucp_sha || ''" 2>/dev/null || true)"
-                if [[ "$ROLLING_SHA" =~ ^[0-9a-f]{40}$ ]] && git -C "$RUNNER_TEMP/ucp-spec" cat-file -e "${ROLLING_SHA}^{commit}" 2>/dev/null; then
-                  if git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$NEW_SHA" "$ROLLING_SHA"; then
-                    echo "::notice::Incoming ucp_sha ${NEW_SHA} is already covered by open PR #${OPEN_ROLLING_PR} on ${ROLLING_BRANCH} (${ROLLING_SHA}); skipping."
-                    exit 0
-                  fi
-                fi
+            if [[ -n "$OPEN_ROLLING_PR" && -n "$ROLLING_SHA" ]] && git merge-base --is-ancestor "origin/${TARGET_BRANCH}" "$ROLLING_REF"; then
+              if git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$NEW_SHA" "$ROLLING_SHA"; then
+                echo "::notice::Incoming ucp_sha ${NEW_SHA} is already covered by open PR #${OPEN_ROLLING_PR} on ${ROLLING_BRANCH} (${ROLLING_SHA}); skipping."
+                exit 0
               fi
             fi
           fi
@@ -341,6 +350,7 @@ jobs:
           TARGET_BRANCH: ${{ env.TARGET_BRANCH }}
           SAFE_TARGET: ${{ env.SAFE_TARGET }}
           OPEN_ROLLING_PR: ${{ env.OPEN_ROLLING_PR }}
+          ROLLING_COVERED_BY_NEW: ${{ env.ROLLING_COVERED_BY_NEW }}
           FORCE_RESYNC: ${{ inputs.force_resync }}
         run: |
           set -euo pipefail
@@ -348,7 +358,7 @@ jobs:
 
           if [[ "${FORCE_RESYNC:-false}" != "true" ]] && git diff --quiet "origin/${TARGET_BRANCH}" -- src/spec_generated.ts; then
             echo "src/spec_generated.ts is unchanged against origin/${TARGET_BRANCH}; skipping lockfile-only PR."
-            if [[ -n "$OPEN_ROLLING_PR" && -n "${GITHUB_ENV:-}" ]]; then
+            if [[ -n "$OPEN_ROLLING_PR" && "$ROLLING_COVERED_BY_NEW" == "true" && -n "${GITHUB_ENV:-}" ]]; then
               echo "CLOSE_STALE_PR=true" >> "$GITHUB_ENV"
             fi
             exit 0
