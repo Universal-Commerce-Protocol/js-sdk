@@ -121,7 +121,7 @@ jobs:
             echo "RELEASE_DIST_TAG=release-${SPEC_DATE}"
           } >> "$GITHUB_ENV"
 
-      - name: Build and publish to NPM
+      - name: Publish to NPM
         env:
           YYYYMMDD: ${{ env.YYYYMMDD }}
           EXPECTED_VERSION: ${{ env.EXPECTED_VERSION }}
@@ -131,7 +131,6 @@ jobs:
           die() { echo "::error::$*"; exit 1; }
 
           npm install -g --ignore-scripts "npm@^11.21.0"
-          npm run build
 
           NPM_ERR="$(mktemp)"
           trap 'rm -f "$NPM_ERR"' EXIT
