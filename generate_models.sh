@@ -109,8 +109,6 @@ done
 
 node scripts/generate-zod-from-types.mjs "$TMP_TYPES_JSON" src/spec_generated.ts
 
-node scripts/inject-schema-constraints.mjs "$TMP_TYPES_JSON" "$SCOPED_SCHEMA_DIR" src/spec_generated.ts
-
 if [[ -x "./node_modules/.bin/prettier" ]]; then
   ./node_modules/.bin/prettier --write src/spec_generated.ts
 else
