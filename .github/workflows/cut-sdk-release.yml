@@ -44,19 +44,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: cut-sdk-release-${{ inputs.spec_version }}
+  cancel-in-progress: false
+
 jobs:
   cut-release:
     name: Cut and tag SDK release
     runs-on: ubuntu-latest
     steps:
-      - name: Generate GitHub App Token
-        id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          permission-contents: write
-
       - name: Checkout js-sdk
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
@@ -140,6 +136,16 @@ jobs:
             fi
           fi
 
+          TAG_CHECK_RC=0
+          git ls-remote --exit-code --tags origin "refs/tags/v${NEW_VERSION}" >/dev/null 2>&1 || TAG_CHECK_RC=$?
+          if (( TAG_CHECK_RC == 0 )); then
+            echo "::error::Tag v${NEW_VERSION} already exists on origin"
+            exit 1
+          elif (( TAG_CHECK_RC != 2 )); then
+            echo "::error::Failed to query remote tags on origin (exit code ${TAG_CHECK_RC})"
+            exit "$TAG_CHECK_RC"
+          fi
+
           UCP_SCHEMA_VERSION="$(node -p "JSON.parse(require('fs').readFileSync('ucp-lock.json', 'utf8')).ucp_schema_version")"
           {
             echo "NEW_VERSION=${NEW_VERSION}"
@@ -163,7 +169,27 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           rm -rf "$TMP_BIN"
 
-      - name: Regenerate models, update version, verify, and publish release
+      - name: Regenerate models, update version, and verify build
+        env:
+          SPEC_VERSION: ${{ inputs.spec_version }}
+          NEW_VERSION: ${{ env.NEW_VERSION }}
+        run: |
+          set -euo pipefail
+          ./generate_models.sh "$RUNNER_TEMP/ucp-spec" --channel release --ref "release/${SPEC_VERSION}" --write-lock
+          npm version "$NEW_VERSION" --no-git-tag-version
+          ./node_modules/.bin/prettier --write package.json ucp-lock.json
+          npm test
+          npm run build
+
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2.2.2
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Commit, push release branch, and publish GitHub Release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
@@ -173,22 +199,32 @@ jobs:
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
         run: |
           set -euo pipefail
-          ./generate_models.sh "$RUNNER_TEMP/ucp-spec" --channel release --ref "release/${SPEC_VERSION}" --write-lock
-          npm version "$NEW_VERSION" --no-git-tag-version
-          ./node_modules/.bin/prettier --write package.json ucp-lock.json
-          npm test
-          npm run build
+          REMOTE_URL="https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git"
+          TAG_CHECK_RC=0
+          git ls-remote --exit-code --tags "$REMOTE_URL" "refs/tags/v${NEW_VERSION}" >/dev/null 2>&1 || TAG_CHECK_RC=$?
+          if (( TAG_CHECK_RC == 0 )); then
+            echo "::error::Tag v${NEW_VERSION} already exists on origin"
+            exit 1
+          elif (( TAG_CHECK_RC != 2 )); then
+            echo "::error::Failed to query remote tags on origin (exit code ${TAG_CHECK_RC})"
+            exit "$TAG_CHECK_RC"
+          fi
 
           BOT_NAME="${APP_SLUG:-ucp-automation}[bot]"
+          BOT_ID="$(gh api "/users/${BOT_NAME}" --jq .id)"
+          if [[ ! "$BOT_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::Failed to resolve numeric GitHub user ID for ${BOT_NAME}"
+            exit 1
+          fi
           git config user.name "$BOT_NAME"
-          git config user.email "${BOT_NAME}@users.noreply.github.com"
+          git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
           git add -- ucp-lock.json package.json package-lock.json src/spec_generated.ts
           git commit -m "chore(release): v${NEW_VERSION}"
-          git push "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "HEAD:refs/heads/release/${SPEC_VERSION}"
+          git push "$REMOTE_URL" "HEAD:refs/heads/release/${SPEC_VERSION}"
 
           if [[ "$PUBLISH_RELEASE" == "true" ]]; then
             git tag -a "v${NEW_VERSION}" -m "Release v${NEW_VERSION}"
-            git push "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "refs/tags/v${NEW_VERSION}"
+            git push "$REMOTE_URL" "refs/tags/v${NEW_VERSION}"
             gh release create "v${NEW_VERSION}" \
               --repo "$REPOSITORY" \
               --target "release/${SPEC_VERSION}" \

@@ -38,6 +38,7 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: "lts/*"
+          package-manager-cache: false
 
       - name: Verify release tag, manifest version, lockfile, and branch ancestry
         env:
@@ -135,13 +136,27 @@ jobs:
           EXPECTED_VERSION: ${{ env.EXPECTED_VERSION }}
         run: |
           set -euo pipefail
-          npm install -g "npm@>=11.21.0"
+          npm install -g "npm@^11.21.0"
           npm run build
-          CURRENT_LATEST="$(npm view @ucp-js/sdk dist-tags.latest 2>/dev/null || echo "")"
+          NPM_VIEW_ERR="$(mktemp)"
+          if CURRENT_LATEST="$(npm view @ucp-js/sdk dist-tags.latest 2>"$NPM_VIEW_ERR")"; then
+            rm -f "$NPM_VIEW_ERR"
+          elif grep -Eq '^npm (error|ERR!) code E404\b' "$NPM_VIEW_ERR"; then
+            CURRENT_LATEST=""
+            rm -f "$NPM_VIEW_ERR"
+          else
+            cat "$NPM_VIEW_ERR" >&2
+            rm -f "$NPM_VIEW_ERR"
+            echo "::error::Failed to query npm dist-tags.latest for @ucp-js/sdk; aborting to prevent unsafe latest tag overwrite"
+            exit 1
+          fi
           if [[ "$CURRENT_LATEST" =~ ^([0-9]{8})\.[0-9]+\.[0-9]+$ ]]; then
             LATEST_EPOCH="${BASH_REMATCH[1]}"
-          else
+          elif [[ -z "$CURRENT_LATEST" || "$CURRENT_LATEST" == 0.* ]]; then
             LATEST_EPOCH="0"
+          else
+            echo "::error::Unexpected dist-tags.latest version '${CURRENT_LATEST}' for @ucp-js/sdk"
+            exit 1
           fi
           RELEASE_DIST_TAG="release-${YYYY}-${MM}-${DD}"
           if (( 10#$YYYYMMDD >= 10#$LATEST_EPOCH )); then
