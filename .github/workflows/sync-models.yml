@@ -206,7 +206,7 @@ jobs:
           (cd "$TMP_BIN" && sha256sum -c --ignore-missing SHA256SUMS)
           install -m 0755 "$TMP_BIN/ucp-schema-linux-x86_64" "$TMP_BIN/ucp-schema"
 
-          UCP_SCHEMA_BIN="$TMP_BIN/ucp-schema" ./generate_models.sh "$RUNNER_TEMP/ucp-spec" --spec-dir "$RUNNER_TEMP/ucp-spec" --channel "$CHANNEL" --ref "$UCP_REF" --write-lock
+          UCP_SCHEMA_BIN="$TMP_BIN/ucp-schema" ./generate_models.sh --spec-dir "$RUNNER_TEMP/ucp-spec" --channel "$CHANNEL" --ref "$UCP_REF" --write-lock
           PRE_COMMIT=(pipx run pre-commit)
           if command -v uvx >/dev/null 2>&1; then PRE_COMMIT=(uvx pre-commit); fi
           "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json || \
