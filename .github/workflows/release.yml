@@ -1,3 +1,17 @@
+# Copyright 2026 UCP Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: Release
 on:
   release:
@@ -5,10 +19,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: npm-release-publish
+  cancel-in-progress: false
+
 jobs:
   release:
     name: Upload release to NPM
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: "release"
     permissions:
       id-token: write
@@ -17,18 +36,125 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install Node
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
-          node-version: 'lts/*'
+          node-version: "lts/*"
+          package-manager-cache: false
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Verify release provenance, regenerate models, and run tests
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          die() { echo "::error::$*"; exit 1; }
 
-      - name: Build
-        run: npm run build
+          [[ "$RELEASE_TAG" =~ ^v([0-9]{4})([0-9]{2})([0-9]{2})\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            || die "Release tag '$RELEASE_TAG' must match canonical vYYYYMMDD.MINOR.PATCH"
+          YYYY="${BASH_REMATCH[1]}"
+          MM="${BASH_REMATCH[2]}"
+          DD="${BASH_REMATCH[3]}"
+          MINOR="${BASH_REMATCH[4]}"
+          PATCH="${BASH_REMATCH[5]}"
+          SPEC_DATE="${YYYY}-${MM}-${DD}"
+          [[ "$(date -u -d "$SPEC_DATE" +%Y-%m-%d 2>/dev/null || true)" == "$SPEC_DATE" ]] \
+            || die "Release tag '$RELEASE_TAG' does not contain a valid calendar date (${SPEC_DATE})"
+          YYYYMMDD="${YYYY}${MM}${DD}"
+          (( 10#$YYYYMMDD >= 20260825 )) || die "CalVer release epoch $YYYYMMDD must be >= 20260825"
+          EXPECTED_VERSION="${YYYYMMDD}.${MINOR}.${PATCH}"
+          EXPECTED_BRANCH="release/${SPEC_DATE}"
+
+          PKG_VERSION="$(jq -er '.version | select(type == "string")' package.json)"
+          [[ "$PKG_VERSION" != 0.0.0* ]] || die "Refusing to publish draft package.json version '$PKG_VERSION'"
+          [[ "$PKG_VERSION" == "$EXPECTED_VERSION" ]] || die "package.json version '$PKG_VERSION' does not match tag '$EXPECTED_VERSION'"
+
+          [[ -f ucp-lock.json ]] || die "ucp-lock.json is missing"
+          jq -e --arg ref "$EXPECTED_BRANCH" '.channel == "release" and .ucp_ref == $ref' ucp-lock.json >/dev/null \
+            || die "ucp-lock.json must have channel='release' and ucp_ref='${EXPECTED_BRANCH}'"
+          LOCK_SHA="$(jq -er '.ucp_sha | select(type == "string" and test("^[0-9a-f]{40}$"))' ucp-lock.json)" \
+            || die "Invalid ucp_sha in ucp-lock.json"
+          UCP_SCHEMA_VERSION="$(jq -er '.ucp_schema_version | select(type == "string" and test("^[0-9]+\\.[0-9]+\\.[0-9]+$"))' ucp-lock.json)" \
+            || die "Invalid ucp_schema_version in ucp-lock.json"
+
+          git fetch origin "+refs/heads/${EXPECTED_BRANCH}:refs/remotes/origin/${EXPECTED_BRANCH}"
+          git merge-base --is-ancestor HEAD "origin/${EXPECTED_BRANCH}" \
+            || die "Release commit $(git rev-parse HEAD) is not an ancestor of origin/${EXPECTED_BRANCH}"
+
+          rm -rf "$RUNNER_TEMP/ucp-spec"
+          git clone --filter=blob:none --no-checkout https://github.com/Universal-Commerce-Protocol/ucp.git "$RUNNER_TEMP/ucp-spec"
+          git -C "$RUNNER_TEMP/ucp-spec" show-ref --verify --quiet "refs/remotes/origin/${EXPECTED_BRANCH}" \
+            || die "Upstream branch ${EXPECTED_BRANCH} not found in ucp"
+          git -C "$RUNNER_TEMP/ucp-spec" cat-file -e "${LOCK_SHA}^{commit}" 2>/dev/null \
+            || die "ucp-lock.json ucp_sha '$LOCK_SHA' not found in ucp"
+          git -C "$RUNNER_TEMP/ucp-spec" merge-base --is-ancestor "$LOCK_SHA" "origin/${EXPECTED_BRANCH}" \
+            || die "ucp-lock.json ucp_sha '$LOCK_SHA' is not an ancestor of upstream origin/${EXPECTED_BRANCH}"
+          git -C "$RUNNER_TEMP/ucp-spec" checkout --quiet "$LOCK_SHA"
+
+          npm ci
+          TMP_BIN="$(mktemp -d)"
+          trap 'rm -rf "$TMP_BIN"' EXIT
+          BASE_URL="https://github.com/Universal-Commerce-Protocol/ucp-schema/releases/download/v${UCP_SCHEMA_VERSION}"
+          curl -fsSL --retry 3 -o "$TMP_BIN/ucp-schema-linux-x86_64" "$BASE_URL/ucp-schema-linux-x86_64"
+          curl -fsSL --retry 3 -o "$TMP_BIN/SHA256SUMS" "$BASE_URL/SHA256SUMS"
+          (cd "$TMP_BIN" && sha256sum -c --ignore-missing SHA256SUMS)
+          install -m 0755 "$TMP_BIN/ucp-schema-linux-x86_64" "$TMP_BIN/ucp-schema"
+
+          UCP_SCHEMA_BIN="$TMP_BIN/ucp-schema" ./generate_models.sh --from-lock --spec-dir "$RUNNER_TEMP/ucp-spec"
+          PRE_COMMIT=(pipx run pre-commit)
+          if command -v uvx >/dev/null 2>&1; then PRE_COMMIT=(uvx pre-commit); fi
+          "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json || \
+            "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json
+
+          if [[ -n "$(git status --porcelain -- src/spec_generated.ts package.json ucp-lock.json)" ]]; then
+            git diff -- src/spec_generated.ts package.json ucp-lock.json || true
+            die "Committed release models or manifest differ from deterministic lockfile regeneration"
+          fi
+          npm run build
+          npm test
+
+          {
+            echo "YYYYMMDD=${YYYYMMDD}"
+            echo "EXPECTED_VERSION=${EXPECTED_VERSION}"
+            echo "RELEASE_DIST_TAG=release-${SPEC_DATE}"
+          } >> "$GITHUB_ENV"
 
       - name: Publish to NPM
-        run: npm publish --provenance --access public
+        env:
+          YYYYMMDD: ${{ env.YYYYMMDD }}
+          EXPECTED_VERSION: ${{ env.EXPECTED_VERSION }}
+          RELEASE_DIST_TAG: ${{ env.RELEASE_DIST_TAG }}
+        run: |
+          set -euo pipefail
+          die() { echo "::error::$*"; exit 1; }
+
+          npm install -g --ignore-scripts "npm@^11.21.0"
+
+          NPM_ERR="$(mktemp)"
+          trap 'rm -f "$NPM_ERR"' EXIT
+          if CURRENT_LATEST="$(npm view @ucp-js/sdk dist-tags.latest 2>"$NPM_ERR")"; then
+            :
+          elif grep -Eq '^npm (error|ERR!) code E404\b' "$NPM_ERR"; then
+            CURRENT_LATEST=""
+          else
+            cat "$NPM_ERR" >&2
+            die "Failed to query npm dist-tags.latest for @ucp-js/sdk"
+          fi
+
+          if [[ "$CURRENT_LATEST" =~ ^([0-9]{8})\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            LATEST_EPOCH="${BASH_REMATCH[1]}"
+          elif [[ -z "$CURRENT_LATEST" || "$CURRENT_LATEST" == 0.* ]]; then
+            LATEST_EPOCH="0"
+          else
+            die "Unexpected dist-tags.latest version '${CURRENT_LATEST}' for @ucp-js/sdk"
+          fi
+
+          if (( 10#$YYYYMMDD >= 10#$LATEST_EPOCH )); then
+            npm publish --provenance --access public --tag latest
+            npm dist-tag add "@ucp-js/sdk@${EXPECTED_VERSION}" "$RELEASE_DIST_TAG" || \
+              echo "::warning::Unable to attach secondary dist-tag ${RELEASE_DIST_TAG}; verify 'Allow npm dist-tag' is enabled on npmjs.com Trusted Publisher"
+          else
+            npm publish --provenance --access public --tag "$RELEASE_DIST_TAG"
+          fi
