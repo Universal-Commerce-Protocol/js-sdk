@@ -146,7 +146,7 @@ jobs:
           if [[ "$BUMP" == "publish-existing" ]]; then
             UCP_SCHEMA_BIN="$TMP_BIN/ucp-schema" ./generate_models.sh --from-lock --spec-dir "$RUNNER_TEMP/ucp-spec"
           else
-            UCP_SCHEMA_BIN="$TMP_BIN/ucp-schema" ./generate_models.sh "$RUNNER_TEMP/ucp-spec" --spec-dir "$RUNNER_TEMP/ucp-spec" --channel release --ref "$REL_BRANCH" --write-lock
+            UCP_SCHEMA_BIN="$TMP_BIN/ucp-schema" ./generate_models.sh --spec-dir "$RUNNER_TEMP/ucp-spec" --channel release --ref "$REL_BRANCH" --write-lock
             npm version "$NEW_VERSION" --no-git-tag-version
           fi
 
