@@ -12,8 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+const fs = require("node:fs");
+const path = require("node:path");
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+
+const ucpLock = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "..", "ucp-lock.json"), "utf8")
+);
 
 const {
   CardCredentialSchema,
@@ -601,62 +607,62 @@ test("MediaSchema preserves forward-compatible unknown media types and extra pro
   assert.deepEqual(parsedProduct.data.media[1], audioMedia);
 });
 
-test("CheckoutCompleteRequestSchema marks cart_id as @deprecated while keeping runtime validation optional string", () => {
-  assert.equal(
-    typeof CheckoutCompleteRequestSchema.shape.cart_id.description,
-    "string"
-  );
+test("CheckoutCompleteRequestSchema handles cart_id per channel while preserving unknown fields", () => {
+  if (ucpLock.ucp_ref !== "release/2026-08-25") {
+    assert.equal(CheckoutCompleteRequestSchema.shape.cart_id, undefined);
+    assert.equal(CheckoutSchema.shape.cart_id, undefined);
+  } else {
+    assert.match(
+      CheckoutCompleteRequestSchema.shape.cart_id.description,
+      /^@deprecated/
+    );
+    assert.equal(
+      CheckoutCreateRequestSchema.shape.cart_id.description,
+      undefined
+    );
+    assert.equal(CheckoutSchema.shape.cart_id.description, undefined);
+    assert.equal(
+      CheckoutCompleteRequestSchema.safeParse({
+        payment: { instruments: [] },
+        cart_id: 123,
+      }).success,
+      false
+    );
+  }
+
   assert.ok(
-    CheckoutCompleteRequestSchema.shape.cart_id.description.startsWith(
-      "@deprecated"
-    )
+    CheckoutCompleteRequestSchema.safeParse({ payment: { instruments: [] } })
+      .success
   );
-  assert.equal(
-    CheckoutCreateRequestSchema.shape.cart_id.description,
-    undefined
-  );
-  assert.equal(CheckoutSchema.shape.cart_id.description, undefined);
-
-  const omittedCartId = CheckoutCompleteRequestSchema.safeParse({
-    payment: { instruments: [] },
-  });
-  assert.ok(omittedCartId.success);
-
   const stringCartId = CheckoutCompleteRequestSchema.safeParse({
     payment: { instruments: [] },
     cart_id: "cart_legacy_123",
   });
   assert.ok(stringCartId.success);
   assert.equal(stringCartId.data.cart_id, "cart_legacy_123");
-
-  const numericCartId = CheckoutCompleteRequestSchema.safeParse({
-    payment: { instruments: [] },
-    cart_id: 123,
-  });
-  assert.equal(numericCartId.success, false);
 });
 
-test("CheckoutCreateRequestSchema enforces line_items and quantity >= 1 while preserving third-party extension fields", () => {
-  const validCreate = {
+test("CheckoutCreateRequestSchema accepts line_items (and cart_id on draft) and enforces quantity >= 1 while preserving third-party extension fields", () => {
+  const parsed = CheckoutCreateRequestSchema.safeParse({
     line_items: [
-      {
-        item: { id: "sku_100" },
-        quantity: 2,
-        "com.example.gift_wrap": true,
-      },
+      { item: { id: "sku_100" }, quantity: 2, "com.example.gift_wrap": true },
     ],
     cart_id: "cart_abc",
     "com.example.channel": "mobile_app",
-  };
-  const parsed = CheckoutCreateRequestSchema.safeParse(validCreate);
+  });
   assert.ok(parsed.success, JSON.stringify(parsed.error?.issues));
   assert.equal(parsed.data.cart_id, "cart_abc");
   assert.equal(parsed.data["com.example.channel"], "mobile_app");
   assert.equal(parsed.data.line_items[0]["com.example.gift_wrap"], true);
 
   assert.equal(
+    CheckoutCreateRequestSchema.safeParse({ cart_id: "cart_only_create" })
+      .success,
+    ucpLock.ucp_ref !== "release/2026-08-25"
+  );
+  assert.equal(
     CheckoutCreateRequestSchema.safeParse({
-      cart_id: "cart_missing_items",
+      "com.example.channel": "missing_both",
     }).success,
     false
   );
