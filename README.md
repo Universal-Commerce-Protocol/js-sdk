@@ -135,6 +135,175 @@ ucp-schema validate payload.json --op read
 ucp-schema validate payload.json --profile profile.json --op create
 ```
 
+### Generating REST Server & Client Stubs
+
+Starter Shopping services and single-version platforms without custom capability extensions can import `paths` and `operations` directly from `@ucp-js/sdk` with no CLI step. When composing custom capability profiles or supporting multiple protocol versions simultaneously, compile your profile with `ucp-schema generate-openapi --profile` and `openapi-typescript`:
+
+#### 1. Merchant Server Stubs
+
+Merchants publish a fixed discovery profile, so server route types can be generated once at build time with active capabilities and custom extensions composed in place:
+
+```bash
+ucp-schema generate-openapi --profile ./profile.json -o openapi.json
+npx openapi-typescript openapi.json --default-non-nullable false --empty-objects-unknown -o src/ucp-openapi.d.ts
+```
+
+Disabling non-nullable defaults keeps optional UCP fields with JSON Schema defaults optional in TypeScript, and typing empty objects as unknown records aligns open extension containers with the SDK's generated models (validate incoming wire payloads via `Ajv2020` or OpenAPI middleware per [Validation](#validation) before invoking handlers):
+
+```typescript
+import type { components, operations } from "./ucp-openapi.js";
+
+type Body<T> = T extends { content: Record<string, infer B> } ? B : never;
+type Resp<T> = { [K in keyof T]: Body<T[K]> }[keyof T];
+export type MerchantHandlers<Ops> = {
+  [Op in keyof Ops]: (ctx: {
+    params: Ops[Op] extends { parameters: infer P } ? P : never;
+    body: Ops[Op] extends { requestBody: infer B } ? Body<B> : undefined;
+  }) => Promise<Ops[Op] extends { responses: infer R } ? Resp<R> : never>;
+};
+
+export const handlers: Pick<MerchantHandlers<operations>, "create_checkout"> = {
+  async create_checkout({ body }) {
+    const amount = 1500 * (body.line_items?.[0]?.quantity ?? 1);
+    const checkout: components["schemas"]["Checkout"] = {
+      ucp: { version: "2026-08-25", payment_handlers: {} },
+      id: "chk_123",
+      status: "incomplete",
+      currency: "USD",
+      line_items: [],
+      totals: ["subtotal", "total"].map((type) => ({ type, amount })),
+      links: [],
+    };
+    return checkout;
+  },
+};
+```
+
+#### 2. Platform Runtime Stub Factory
+
+Multi-version platforms compile their profile once per supported protocol version at build time rather than running code generation per merchant:
+
+```bash
+ucp-schema generate-openapi --profile ./platform-2026-08-25.json -o openapi-2026-08-25.json
+npx openapi-typescript openapi-2026-08-25.json --default-non-nullable false --empty-objects-unknown -o src/ucp-2026-08-25.d.ts
+```
+
+At runtime, validate each merchant's fetched discovery profile over HTTPS using an SSRF-safe `fetch` (for example via `Ajv2020` against `ProfileBusinessSchema` or `ucp-schema validate`), negotiate the highest mutually supported version (following `supported_versions` links when needed and rejecting `supported_versions` on version-specific leaf profiles), cache an `openapi-fetch` client per factory instance, and attach per-version `UCP-Agent`, request headers, and RFC 9421 signing middleware:
+
+```typescript
+import createClient from "openapi-fetch";
+import type { ProfileBusinessSchema } from "@ucp-js/sdk";
+import type { paths as Paths20260825 } from "./ucp-2026-08-25.js";
+
+type AutoHdrs = "Idempotency-Key" | "Request-Id" | "UCP-Agent";
+type Hdrs<H> = Omit<H, AutoHdrs> & Partial<Pick<H, AutoHdrs & keyof H>>;
+type HdrParam<H> =
+  {} extends Omit<H, AutoHdrs> ? { header?: Hdrs<H> } : { header: Hdrs<H> };
+type Patch<O> = O extends { parameters: { header: infer H } }
+  ? Omit<O, "parameters"> & {
+      parameters: Omit<O["parameters"], "header"> & HdrParam<H>;
+    }
+  : O;
+type WithMiddleware<P> = {
+  [K in keyof P]: { [M in keyof P[K]]: Patch<P[K][M]> };
+};
+
+const CLIENTS = {
+  "2026-08-25": (baseUrl: string, fetch?: typeof globalThis.fetch) =>
+    createClient<WithMiddleware<Paths20260825>>({ baseUrl, fetch }),
+} as const;
+type Version = keyof typeof CLIENTS;
+
+export type MerchantClient = {
+  [V in Version]: {
+    version: V;
+    client: ReturnType<(typeof CLIENTS)[V]>;
+    capabilities: ReadonlySet<string>;
+  };
+}[Version];
+
+export interface PlatformOptions {
+  agentProfileUrls: Record<Version, string>;
+  service?: string;
+  fetch?: typeof globalThis.fetch; // Supply an SSRF-safe fetch in production
+  validateProfile?: (data: unknown) => void;
+  signRequest?: (req: Request) => Request | Promise<Request>;
+}
+
+const assertHttps = (u: string) => {
+  if (new URL(u).protocol !== "https:") throw new Error(`HTTPS required: ${u}`);
+};
+
+export function createPlatformFactory(opts: PlatformOptions) {
+  const cache = new Map<string, MerchantClient>();
+
+  function createMerchantClient<V extends Version>(
+    v: V,
+    url: string,
+    capabilities: ReadonlySet<string> = new Set()
+  ): Extract<MerchantClient, { version: V }> {
+    assertHttps(url);
+    const client = CLIENTS[v](url.replace(/\/+$/, ""), opts.fetch);
+    client.use({
+      async onRequest({ request }) {
+        const h = request.headers;
+        const set = (k: string, val: string) => h.has(k) || h.set(k, val);
+        set("Request-Id", crypto.randomUUID());
+        set("UCP-Agent", `profile="${opts.agentProfileUrls[v]}"`);
+        // Supply an explicit header["Idempotency-Key"] when retrying mutating calls.
+        if (!/^(GET|HEAD)$/.test(request.method))
+          set("Idempotency-Key", crypto.randomUUID());
+        return opts.signRequest ? await opts.signRequest(request) : request;
+      },
+    });
+    return { version: v, client, capabilities } as Extract<
+      MerchantClient,
+      { version: V }
+    >;
+  }
+
+  async function getMerchantClient(url: string): Promise<MerchantClient> {
+    const load = async (u: string): Promise<ProfileBusinessSchema> => {
+      assertHttps(u);
+      const res = await (opts.fetch ?? fetch)(u, { redirect: "error" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${u}`);
+      const raw: unknown = await res.json();
+      opts.validateProfile?.(raw); // e.g., Ajv2020 against ProfileBusinessSchema
+      return raw as ProfileBusinessSchema;
+    };
+    let p = await load(url);
+    const all = [p.ucp.version, ...Object.keys(p.ucp.supported_versions ?? {})];
+    const has = Object.prototype.hasOwnProperty;
+    const ver = all
+      .filter((v): v is Version => has.call(CLIENTS, v))
+      .sort()
+      .pop();
+    if (!ver) throw new Error(`Unsupported UCP versions: ${all.join(", ")}`);
+    const alt = p.ucp.supported_versions?.[ver];
+    if (ver !== p.ucp.version && alt) {
+      p = await load(alt);
+      if (p.ucp.supported_versions)
+        throw new Error(`Leaf profile must omit supported_versions: ${alt}`);
+    }
+    if (p.ucp.version !== ver) throw new Error(`Version mismatch: ${ver}`);
+
+    const svc = opts.service ?? "dev.ucp.shopping";
+    const rest = p.ucp.services[svc]?.find((s) => s.transport === "rest");
+    if (!rest?.endpoint)
+      throw new Error(`No REST endpoint for ${svc} (${ver})`);
+
+    const ep = rest.endpoint.replace(/\/+$/, "");
+    const caps = new Set(Object.keys(p.ucp.capabilities ?? {}).sort());
+    const key = `${ver}|${ep}|${[...caps]}`;
+    const hit = cache.get(key) ?? createMerchantClient(ver, ep, caps);
+    cache.set(key, hit);
+    return hit;
+  }
+
+  return { createMerchantClient, getMerchantClient };
+}
+```
+
 ## Development
 
 ### Prerequisites
