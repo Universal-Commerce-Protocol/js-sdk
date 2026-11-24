@@ -24,10 +24,12 @@
 
 ## Overview
 
-This repository contains the JavaScript SDK for the
-[Universal Commerce Protocol (UCP)](https://ucp.dev). It provides TypeScript
-types and [Zod](https://zod.dev/) schemas for UCP models, making it easy to
-build UCP-compliant applications in JavaScript and TypeScript.
+This repository contains the JavaScript and TypeScript SDK for the
+[Universal Commerce Protocol (UCP)](https://ucp.dev). It provides
+zero-dependency TypeScript types for UCP wire data transfer objects (DTOs) and
+REST OpenAPI operations (`paths`, `operations`, `webhooks`, and `components`),
+generated via [`openapi-typescript`](https://openapi-ts.dev/), alongside the
+compiled Shopping OpenAPI 3.1 specification (`@ucp-js/sdk/openapi.json`).
 
 ### UCP Version Compatibility
 
@@ -64,65 +66,55 @@ npm install github:Universal-Commerce-Protocol/js-sdk#<commit-sha>
 
 ## Usage
 
-The SDK provides Zod schemas and TypeScript types for UCP wire data transfer objects (DTOs). Generated Zod schemas perform structural type parsing and tolerant-reader deserialization while preserving unknown extension fields.
-
-### TypeScript / ES Modules
+The SDK exports compile-time TypeScript definitions for UCP wire data transfer objects (DTOs) and REST OpenAPI operations with zero runtime dependencies. Open UCP models preserve index signatures (`[key: string]: unknown`) for forward-compatible capability extensions, while closed constraint models reject unknown properties at compile time.
 
 ```typescript
-import { CheckoutSchema, Checkout } from "@ucp-js/sdk";
+import type {
+  Checkout,
+  CheckoutCreateRequest,
+  operations,
+  paths,
+} from "@ucp-js/sdk";
 
-// Parse wire payload into a typed UCP DTO
-const parseResult = CheckoutSchema.safeParse(checkoutData);
+type CreateCheckoutOp = paths["/checkout-sessions"]["post"];
+type CreateCheckoutResp =
+  operations["create_checkout"]["responses"][201]["content"]["application/json"];
 
-if (parseResult.success) {
-  const checkout: Checkout = parseResult.data;
-  console.log(checkout.status); // "incomplete" | "ready_for_complete" | ...
-  console.log(checkout.currency); // ISO 4217 currency code
-} else {
-  console.error(parseResult.error);
-}
-```
+const request: CheckoutCreateRequest = {
+  line_items: [{ item: { id: "sku_123" }, quantity: 1 }],
+  "com.example.custom_extension": { source: "agent" },
+};
 
-### CommonJS
-
-```javascript
-const { CheckoutSchema } = require("@ucp-js/sdk");
-
-const parseResult = CheckoutSchema.safeParse(checkoutData);
-if (parseResult.success) {
-  const checkout = parseResult.data;
-  // ...
+function renderCheckout(checkout: Checkout | CreateCheckoutResp) {
+  console.log(checkout.status, checkout.currency);
 }
 ```
 
 ### Validation
 
-Zod DTO schemas validate structural wire types and preserve unknown extension properties for forward compatibility, but they do not enforce full UCP protocol conformance on their own.
+`@ucp-js/sdk` ships pure TypeScript type definitions (`0` runtime dependencies) and performs no runtime validation on its own.
 
 To enforce normative UCP message constraints (capability profile composition, directional `ucp_request` and `ucp_response` visibility, `dependentRequired`, `if`/`then`, `uniqueItems`, `contains`, `propertyNames`, `not.enum`, and closed-schema rules):
 
-1. **In-Memory Runtime Validation (Production Services)**: Compile your UCP discovery profile once at build or startup time into a standard JSON Schema Draft 2020-12 bundle (`ucp-schema generate-types --profile profile.json -o ucp.types.json`) or OpenAPI 3.1 specification (`ucp-schema generate-openapi --profile profile.json -o openapi.json`). Because `ucp-schema` resolves all UCP-specific annotations and capability extensions into standard JSON Schema 2020-12, your server can validate payloads in memory on every request using [`ajv`](https://ajv.js.org/) (`Ajv2020`) or standard OpenAPI middleware before parsing into SDK DTOs:
+1. **In-Memory Runtime Validation (Production Services)**: For standard Shopping payloads, load the bundled OpenAPI 3.1 specification (`@ucp-js/sdk/openapi.json`) directly into [`ajv`](https://ajv.js.org/) (`Ajv2020`) and `ajv-formats` (installed separately) with no `ucp-schema` CLI required. Services with custom capability extensions can instead compile their discovery profile via `ucp-schema generate-openapi --profile profile.json -o openapi.json` and register that document the same way:
 
 ```typescript
-import fs from "node:fs";
-import Ajv2020 from "ajv/dist/2020.js";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import { CheckoutSchema, Checkout } from "@ucp-js/sdk";
+import openapi from "@ucp-js/sdk/openapi.json" with { type: "json" };
+import type { Checkout } from "@ucp-js/sdk";
 
-// At startup: compile the pre-generated schema bundle once in memory
-const bundle = JSON.parse(fs.readFileSync("ucp.types.json", "utf8"));
+// At startup: compile the bundled OpenAPI 3.1 schemas once in memory
 const ajv = new Ajv2020({ strict: false });
-addFormats(ajv);
-ajv.addSchema(bundle, "https://ucp.dev/bundle.json");
-const validateCheckout = ajv.getSchema(
-  "https://ucp.dev/bundle.json#/$defs/Checkout"
-)!;
+addFormats.default(ajv);
+ajv.addSchema(openapi, "ucp");
+const validateCheckout = ajv.getSchema("ucp#/components/schemas/Checkout")!;
 
-// Per request: validate in-memory, then parse into a typed DTO
+// Per request: validate in-memory, then narrow to a typed UCP DTO
 if (!validateCheckout(rawPayload)) {
   throw new Error(ajv.errorsText(validateCheckout.errors));
 }
-const checkout: Checkout = CheckoutSchema.parse(rawPayload);
+const checkout = rawPayload as Checkout;
 ```
 
 2. **CLI & CI Conformance Testing**: Verify fixture payloads or recorded traffic from the command line or CI pipelines with [`ucp-schema validate`](https://github.com/Universal-Commerce-Protocol/ucp-schema):

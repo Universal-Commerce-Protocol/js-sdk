@@ -98,8 +98,8 @@ jobs:
           "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json || \
             "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json
 
-          if [[ -n "$(git status --porcelain -- src/spec_generated.ts ucp-lock.json)" ]]; then
-            git diff -- src/spec_generated.ts ucp-lock.json || true
-            echo "::error::src/spec_generated.ts or ucp-lock.json differs from lockfile regeneration."
+          if [[ -n "$(git status --porcelain -- src/openapi.json src/spec_generated.ts ucp-lock.json)" ]]; then
+            git diff -- src/openapi.json src/spec_generated.ts ucp-lock.json || true
+            echo "::error::src/openapi.json, src/spec_generated.ts, or ucp-lock.json differs from lockfile regeneration."
             exit 1
           fi

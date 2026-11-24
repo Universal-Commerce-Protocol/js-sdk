@@ -108,8 +108,8 @@ jobs:
           "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json || \
             "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts ucp-lock.json
 
-          if [[ -n "$(git status --porcelain -- src/spec_generated.ts package.json ucp-lock.json)" ]]; then
-            git diff -- src/spec_generated.ts package.json ucp-lock.json || true
+          if [[ -n "$(git status --porcelain -- src/openapi.json src/spec_generated.ts package.json ucp-lock.json)" ]]; then
+            git diff -- src/openapi.json src/spec_generated.ts package.json ucp-lock.json || true
             die "Committed release models or manifest differ from deterministic lockfile regeneration"
           fi
           npm run build

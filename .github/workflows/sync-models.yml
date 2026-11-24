@@ -76,7 +76,7 @@ jobs:
           echo "refs=$(printf '%s\n' "${REFS[@]}" | jq -R . | jq -cs '[.[0]] + (.[1:] | sort)')" >> "$GITHUB_OUTPUT"
 
   sync:
-    name: Synchronize UCP Zod models (${{ matrix.ucp_ref }})
+    name: Synchronize UCP TypeScript models (${{ matrix.ucp_ref }})
     needs: prepare
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -215,13 +215,13 @@ jobs:
 
           ROLLING_REF="refs/remotes/origin/chore/sync-models-${SAFE_TARGET}"
           if [[ "${FORCE_RESYNC:-false}" != "true" ]]; then
-            if git diff --quiet "origin/${TARGET_BRANCH}" -- src/spec_generated.ts; then
+            if git diff --quiet "origin/${TARGET_BRANCH}" -- src/openapi.json src/spec_generated.ts; then
               if [[ -n "$OPEN_ROLLING_PR" && "$ROLLING_COVERED_BY_NEW" == "true" ]]; then echo "PR_ACTION=close" >> "$GITHUB_ENV"; fi
               exit 0
             fi
             if [[ -n "$OPEN_ROLLING_PR" ]] && git show-ref --verify --quiet "$ROLLING_REF" \
               && git merge-base --is-ancestor "origin/${TARGET_BRANCH}" "$ROLLING_REF" \
-              && git diff --quiet "$ROLLING_REF" -- src/spec_generated.ts; then
+              && git diff --quiet "$ROLLING_REF" -- src/openapi.json src/spec_generated.ts; then
               exit 0
             fi
           fi
@@ -258,7 +258,7 @@ jobs:
           set -euo pipefail
           if [[ "$PR_ACTION" == "close" ]]; then
             gh pr close "$OPEN_ROLLING_PR" --repo "$REPOSITORY" --delete-branch \
-              --comment "Closing superseded sync pull request because \`src/spec_generated.ts\` at upstream commit \`${NEW_SHA}\` now matches \`${TARGET_BRANCH}\`."
+              --comment "Closing superseded sync pull request because \`src/openapi.json\` and \`src/spec_generated.ts\` at upstream commit \`${NEW_SHA}\` now match \`${TARGET_BRANCH}\`."
             exit 0
           fi
 
@@ -272,7 +272,7 @@ jobs:
           git config user.name "$BOT_NAME"
           git config user.email "${BOT_ID}+${BOT_NAME}@users.noreply.github.com"
 
-          git add -- ucp-lock.json src/spec_generated.ts
+          git add -- ucp-lock.json src/openapi.json src/spec_generated.ts
           if git diff --cached --quiet; then exit 0; fi
           git commit -m "$PR_TITLE"
           git push --force "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY}.git" "HEAD:refs/heads/${PR_BRANCH}"

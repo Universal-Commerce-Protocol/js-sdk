@@ -24,6 +24,7 @@ repos:
         args: [--unsafe]
       - id: check-json
       - id: check-added-large-files
+        args: ["--maxkb=1024"]
       - id: check-shebang-scripts-are-executable
       - id: check-executables-have-shebangs
   - repo: https://github.com/pre-commit/mirrors-prettier
@@ -31,6 +32,7 @@ repos:
     hooks:
       - id: prettier
         files: \.(ts|js|json|md|yaml|yml|html)$
+        exclude: ^src/openapi\.json$
   - repo: https://github.com/koalaman/shellcheck-precommit
     rev: v0.10.0
     hooks:
@@ -39,4 +41,10 @@ repos:
     rev: v2.4.1
     hooks:
       - id: codespell
-        args: ["--skip", "package-lock.json", "-I", ".codespellignore"]
+        args:
+          [
+            "--skip",
+            "package-lock.json,src/openapi.json",
+            "-I",
+            ".codespellignore",
+          ]
