@@ -156,8 +156,8 @@ jobs:
             "${PRE_COMMIT[@]}" run prettier --files src/spec_generated.ts package.json ucp-lock.json
           ./node_modules/.bin/prettier --check package.json ucp-lock.json
 
-          if [[ "$BUMP" == "publish-existing" && -n "$(git status --porcelain -- src/spec_generated.ts package.json ucp-lock.json)" ]]; then
-            git diff -- src/spec_generated.ts package.json ucp-lock.json || true
+          if [[ "$BUMP" == "publish-existing" && -n "$(git status --porcelain -- src/openapi.json src/spec_generated.ts package.json ucp-lock.json)" ]]; then
+            git diff -- src/openapi.json src/spec_generated.ts package.json ucp-lock.json || true
             die "Existing release branch models or manifest differ from lockfile regeneration"
           fi
 
@@ -206,7 +206,7 @@ jobs:
             REMOTE_HEAD="$(git ls-remote --heads "$REMOTE_URL" "refs/heads/release/${SPEC_VERSION}" | awk '{print $1}')"
             [[ "$REMOTE_HEAD" == "$(git rev-parse HEAD)" ]] || die "Remote branch release/${SPEC_VERSION} moved during verification"
           else
-            git add -- ucp-lock.json package.json package-lock.json src/spec_generated.ts
+            git add -- ucp-lock.json package.json package-lock.json src/openapi.json src/spec_generated.ts
             ! git diff --cached --quiet || die "Expected staged release changes for bump=${BUMP}, but git index had zero diff"
             git commit -m "chore(release): v${NEW_VERSION}"
             git push "$REMOTE_URL" "HEAD:refs/heads/release/${SPEC_VERSION}"
